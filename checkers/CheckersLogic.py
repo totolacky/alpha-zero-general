@@ -63,6 +63,9 @@ class Board():
                 if self[x][y]==color or self[x][y]==color*2:
                     newmoves = self.get_moves_for_square((x,y))
                     moves.update(newmoves)
+        print("Possible Moves:")
+        print(moves)
+        print("Possible Moves ends here")
         return list(moves)
 
     def game_over(self):
