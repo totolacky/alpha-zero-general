@@ -26,7 +26,7 @@ rp = RandomPlayer(g).play
 gp = GreedyCheckersPlayer(g).play
 hp = HumanCheckersPlayer(g).play
 
-
+'''
 # nnet players
 n1 = NNet(g)
 if mini_checkers:
@@ -49,5 +49,7 @@ else:
     player2 = n2p  # Player 2 is neural network if it's cpu vs cpu.
 
 arena = Arena.Arena(n1p, player2, g, display=CheckersGame.display)
+'''
+arena = Arena.Arena(HumanCheckersPlayer(g).play, HumanCheckersPlayer(g).play, g, display=CheckersGame.display)
 
 print(arena.playGames(2, verbose=True))
