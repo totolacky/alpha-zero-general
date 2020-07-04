@@ -24,7 +24,7 @@ class HumanCheckersPlayer():
         for i in range(len(valid)):
             if valid[i]:
                 ((x,y),(z,w)) = action2move(i)
-                print("[("+str(x)+","+str(y)+")->("+str(z)+","+str(w)+")] ")
+                print("[("+str(x)+","+str(y)+"),("+str(z)+","+str(w)+")] ")
         while True:
             input_move = input()
             input_a = input_move.split(" ")
