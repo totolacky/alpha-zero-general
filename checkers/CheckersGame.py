@@ -7,9 +7,9 @@ import numpy as np
 
 class CheckersGame(Game):
     square_content = {
-        -1: "X",
+        -1: "○",
         +0: "-",
-        +1: "O"
+        +1: "●"
     }
 
     @staticmethod
