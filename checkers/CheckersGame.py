@@ -7,9 +7,11 @@ import numpy as np
 
 class CheckersGame(Game):
     square_content = {
+        -2: "V",
         -1: "X",
         +0: "-",
-        +1: "O"
+        +1: "O",
+        +2: "D"
     }
 
     @staticmethod
@@ -30,18 +32,30 @@ class CheckersGame(Game):
 
     def getActionSize(self):
         # return number of actions
-        return self.n*self.n + 1
+        # 2 possible moves per each of the 4 directions, starting at n*n/2 possible positions
+        # (i,j) position ->
+        return self.n*self.n*4+1
 
     def getNextState(self, board, player, action):
         # if player takes action on board, return next (board,player)
         # action must be a valid move
-        if action == self.n*self.n:
+        if action == self.n*self.n*4:   # When you don't move
             return (board, -player)
         b = Board(self.n)
         b.pieces = np.copy(board)
-        move = (int(action/self.n), action%self.n)
+        move = self.action2move(action)
         b.execute_move(move, player)
         return (b.pieces, -player)
+
+    ''' 
+    Move direction represented by action%8:
+    4   5
+     0 1
+      X
+     2 3
+    6   7
+    Coordinate of X: (i,j) -> action = (n//2*i + j//2) * 8 + (action%8)     
+    '''
 
     def getValidMoves(self, board, player):
         # return a fixed size binary vector
@@ -52,41 +66,33 @@ class CheckersGame(Game):
         if len(legalMoves)==0:
             valids[-1]=1
             return np.array(valids)
-        for x, y in legalMoves:
-            valids[self.n*x+y]=1
+        for ((x,y),(z,w)) in legalMoves:
+            valids[self.move2action(x,y,z,w)]=1
         return np.array(valids)
 
     def getGameEnded(self, board, player):
         # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
         # player = 1
-        b = Board(self.n)
-        b.pieces = np.copy(board)
-        if b.has_legal_moves(player):
-            return 0
-        if b.has_legal_moves(-player):
-            return 0
-        if b.countDiff(player) > 0:
-            return 1
-        return -1
+        return Board.game_over(board)
 
     def getCanonicalForm(self, board, player):
         # return state if player==1, else return -state if player==-1
         return player*board
 
-    def getSymmetries(self, board, pi):
-        # mirror, rotational
-        assert(len(pi) == self.n**2+1)  # 1 for pass
-        pi_board = np.reshape(pi[:-1], (self.n, self.n))
-        l = []
+    def getSymmetries(board, pi):
+        # LR mirror only
+        assert(len(pi) == self.getActionSize())  # 1 for pass
+        l = [(board,pi)]
 
-        for i in range(1, 5):
-            for j in [True, False]:
-                newB = np.rot90(board, i)
-                newPi = np.rot90(pi_board, i)
-                if j:
-                    newB = np.fliplr(newB)
-                    newPi = np.fliplr(newPi)
-                l += [(newB, list(newPi.ravel()) + [pi[-1]])]
+        newB = np.fliplr(board)
+        newPi = [0]*self.getActionSize()
+        for i in range(self.getActionSize()-1):
+            if i%2 == 0:
+              newPi[i] = pi[i+1]
+            else:
+              newPi[i] = pi[i-1]
+        newPi[self.getActionSize()-1] = pi[self.getActionSize()-1]
+        l += [(newB,newPi)]
         return l
 
     def stringRepresentation(self, board):
@@ -99,7 +105,7 @@ class CheckersGame(Game):
     def getScore(self, board, player):
         b = Board(self.n)
         b.pieces = np.copy(board)
-        return b.countDiff(player)
+        return b.countScore(player)
 
     @staticmethod
     def display(board):
@@ -117,3 +123,13 @@ class CheckersGame(Game):
             print("|")
 
         print("-----------------------")
+
+    def action2move(self, action):
+        multiplier = (action//4)%2+1
+        xval = (action//8)//(self.n//2)
+        yval = (action//8)%(self.n//2)*2 + xval%2
+        return ((xval, yval), ((-1+2*(action%2))*multiplier, (-1+2*((action%4)//2))*multiplier))
+
+    def move2action(self, x, y, z, w):
+        direction = (z+2*w+3)//2 if abs(z) == 1 else (z//2+w+3)//2
+        return (self.n//2*x + y//2) * 8 + direction

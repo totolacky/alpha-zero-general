@@ -13,7 +13,7 @@ x is the column, y is the row.
 class Board():
 
     # list of all 8 directions on the board, as (x,y) offsets
-    __directions = [(1,1),(1,0),(1,-1),(0,-1),(-1,-1),(-1,0),(-1,1),(0,1)]
+    __directions = [(1,1),(1,-1),(-1,-1),(-1,1)]
 
     def __init__(self, n):
         "Set up initial board configuration."
@@ -39,16 +39,16 @@ class Board():
     def __getitem__(self, index): 
         return self.pieces[index]
 
-    def countDiff(self, color):
+    def countScore(self, color):
         """Counts the # pieces of the given color
         (1 for white, -1 for black, 0 for empty spaces)"""
         count = 0
         for y in range(self.n):
             for x in range(self.n):
-                if self[x][y]==color:
-                    count += 1
-                if self[x][y]==-color:
-                    count -= 1
+                if self[x][y]*color > 0:
+                    count += abs(self[x][y])
+                if self[x][y]*color < 0:
+                    count -= abs(self[x][y])
         return count
 
     def get_legal_moves(self, color):
@@ -60,26 +60,39 @@ class Board():
         # Get all the squares with pieces of the given color.
         for y in range(self.n):
             for x in range(self.n):
-                if self[x][y]==color:
+                if self[x][y]==color or self[x][y]==color*2:
                     newmoves = self.get_moves_for_square((x,y))
                     moves.update(newmoves)
         return list(moves)
 
-    def has_legal_moves(self, color):
-        for y in range(self.n):
-            for x in range(self.n):
-                if self[x][y]==color:
-                    newmoves = self.get_moves_for_square((x,y))
-                    if len(newmoves)>0:
-                        return True
-        return False
+    @staticmethod
+    def game_over(b):
+        player1 = 0 # player '1'
+        player2 = 0 # player '-1'
+        for i in range(self.n):
+            for j in range(self.n):
+                if b[i][j] > 0:
+                    player1 = player1 + 1
+                elif b[i][j] < 0:
+                    player2 = player2 + 1
+        if player1 == 0:
+            return -1
+        elif player2 == 0:
+            return 1
+        else:
+            return 0
+
+    #def has_legal_moves(self, color):
+    #    for y in range(self.n):
+    #        for x in range(self.n):
+    #            if self[x][y]==color:
+    #                newmoves = self.get_moves_for_square((x,y))
+    #                if len(newmoves)>0:
+    #                    return True
+    #    return False
 
     def get_moves_for_square(self, square):
-        """Returns all the legal moves that use the given square as a base.
-        That is, if the given square is (3,4) and it contains a black piece,
-        and (3,5) and (3,6) contain white pieces, and (3,7) is empty, one
-        of the returned moves is (3,7) because everything from there to (3,4)
-        is flipped.
+        """Returns all the legal moves from the given square.
         """
         (x,y) = square
 
@@ -93,11 +106,11 @@ class Board():
         # search all possible directions.
         moves = []
         for direction in self.__directions:
-            move = self._discover_move(square, direction)
-            if move:
-                # print(square,move,direction)
-                moves.append(move)
-
+            if color * direction[1] > 0 or abs(color) == 2:
+                if self[x+direction[0]][y+direction[1]] == 0:
+                    moves.append(((x,y),direction))
+                elif self[x+direction[0]][y+direction[1]] * color < 0 and self[x+2*direction[0]][y+2*direction[1]] == 0:
+                    moves.append(((x,y),tuple(2*i for i in direction)))
         # return the generated move list
         return moves
 
@@ -110,21 +123,22 @@ class Board():
         #follow it on all 8 directions to look for a piece allowing flipping.
 
         # Add the piece to the empty square.
-        # print(move)
-        flips = [flip for direction in self.__directions
-                      for flip in self._get_flips(move, direction, color)]
-        assert len(list(flips))>0
-        for x, y in flips:
-            #print(self[x][y],color)
-            self[x][y] = color
 
+        ((x,y),(z,w)) = move
+        self[x+z][y+w] = self[x][y]
+        self[x][y] = 0
+
+        if abs(z) == 2:
+            self[x+z//2][y+w//2] = 0
+
+'''
     def _discover_move(self, origin, direction):
         """ Returns the endpoint for a legal move, starting at the given origin,
         moving by the given increment."""
         x, y = origin
         color = self[x][y]
         flips = []
-
+    
         for x, y in Board._increment_move(origin, direction, self.n):
             if self[x][y] == 0:
                 if flips:
@@ -166,5 +180,5 @@ class Board():
         #while 0<=move[0] and move[0]<n and 0<=move[1] and move[1]<n:
             yield move
             move=list(map(sum,zip(move,direction)))
-            #move = (move[0]+direction[0],move[1]+direction[1])
+            #move = (move[0]+direction[0],move[1]+direction[1])'''
 

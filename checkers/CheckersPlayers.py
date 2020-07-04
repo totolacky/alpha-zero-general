@@ -22,16 +22,17 @@ class HumanCheckersPlayer():
         valid = self.game.getValidMoves(board, 1)
         for i in range(len(valid)):
             if valid[i]:
-                print("[", int(i/self.game.n), int(i%self.game.n), end="] ")
+                ((x,y),(z,w)) = action2move(i)
+                print("[("+str(x)+","+str(y)+")->("+str(z)+","+str(w)+")] ")
         while True:
             input_move = input()
             input_a = input_move.split(" ")
-            if len(input_a) == 2:
+            if len(input_a) == 4:
                 try:
-                    x,y = [int(i) for i in input_a]
+                    x,y,z,w = [int(i) for i in input_a]
                     if ((0 <= x) and (x < self.game.n) and (0 <= y) and (y < self.game.n)) or \
                             ((x == self.game.n) and (y == 0)):
-                        a = self.game.n * x + y if x != -1 else self.game.n ** 2
+                        a = move2action(x,y,z,w)
                         if valid[a]:
                             break
                 except ValueError:
@@ -56,3 +57,13 @@ class GreedyCheckersPlayer():
             candidates += [(-score, a)]
         candidates.sort()
         return candidates[0][1]
+
+def action2move(self, action):
+    multiplier = (action//4)%2+1
+    xval = (action//8)//(self.n//2)
+    yval = (action//8)%(self.n//2)*2 + xval%2
+    return ((xval, yval), ((-1+2*(action%2))*multiplier, (-1+2*((action%4)//2))*multiplier))
+
+def move2action(self, x, y, z, w):
+    direction = (z+2*w+3)//2 if abs(z) == 1 else (z//2+w+3)//2
+    return (self.n//2*x + y//2) * 8 + direction
