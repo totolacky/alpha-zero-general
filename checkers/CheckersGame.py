@@ -136,5 +136,5 @@ class CheckersGame(Game):
         return ((xval, yval), ((-1+2*(action%2))*multiplier, (-1+2*((action%4)//2))*multiplier))
 
     def move2action(self, x, y, z, w):
-        direction = (z+2*w+3)//2 if abs(z) == 1 else (z//2+w+3)//2
+        direction = (z+2*w+3)//2 if abs(z) == 1 else (z//2+w+3)//2+4
         return (self.n//2*x + y//2) * 8 + direction
