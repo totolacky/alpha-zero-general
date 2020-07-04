@@ -54,7 +54,7 @@ class CheckersGame(Game):
       X
      2 3
     6   7
-    Coordinate of X: (i,j) -> action = (n//2*i + j//2) * 8 + (action%8)     
+    Coordinate of X: (i,j) -> action = (n//2*i + j//2) * 8 + (action%8)
     '''
 
     def getValidMoves(self, board, player):
