@@ -85,7 +85,7 @@ class CheckersGame(Game):
         if player == 1:
             return board
         else:
-            return -np.fliplr(np.flipud(board))
+            return -np.rot90(board,2)
 
     def getSymmetries(self,board, pi):
         # LR mirror only
