@@ -84,7 +84,7 @@ class CheckersGame(Game):
         else:
             return -np.flipud(board)
 
-    def getSymmetries(board, pi):
+    def getSymmetries(self,board, pi):
         # LR mirror only
         assert(len(pi) == self.getActionSize())  # 1 for pass
         l = [(board,pi)]
