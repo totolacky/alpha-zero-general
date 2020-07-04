@@ -126,6 +126,7 @@ class Board():
         # Add the piece to the empty square.
 
         ((x,y),(z,w)) = move
+        print(x,y,z,w)
         self[x+z][y+w] = self[x][y]
         self[x][y] = 0
 
