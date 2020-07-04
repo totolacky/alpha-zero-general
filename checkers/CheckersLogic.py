@@ -105,7 +105,7 @@ class Board():
         # search all possible directions.
         moves = []
         for direction in self.__directions:
-            if color * direction[1] > 0 or abs(color) == 2:
+            if (color * direction[1] > 0 or abs(color) == 2) and (0 <= x+direction[0] and self.n-1 >= x+direction[0] and 0 <= y+direction[1] and self.n-1 >= y+direction[1]):
                 if self[x+direction[0]][y+direction[1]] == 0:
                     moves.append(((x,y),direction))
                 elif self[x+direction[0]][y+direction[1]] * color < 0 and self[x+2*direction[0]][y+2*direction[1]] == 0:
