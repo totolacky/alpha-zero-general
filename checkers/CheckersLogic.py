@@ -65,15 +65,14 @@ class Board():
                     moves.update(newmoves)
         return list(moves)
 
-    @staticmethod
-    def game_over(b):
+    def game_over(self):
         player1 = 0 # player '1'
         player2 = 0 # player '-1'
         for i in range(self.n):
             for j in range(self.n):
-                if b[i][j] > 0:
+                if self[i][j] > 0:
                     player1 = player1 + 1
-                elif b[i][j] < 0:
+                elif self[i][j] < 0:
                     player2 = player2 + 1
         if player1 == 0:
             return -1

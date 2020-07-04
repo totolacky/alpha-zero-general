@@ -73,7 +73,9 @@ class CheckersGame(Game):
     def getGameEnded(self, board, player):
         # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
         # player = 1
-        return Board.game_over(board)
+        b = Board(self.n)
+        b.pieces = np.copy(board)
+        return b.game_over()
 
     def getCanonicalForm(self, board, player):
         # return state if player==1, else return -state if player==-1
