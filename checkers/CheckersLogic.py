@@ -37,6 +37,7 @@ class Board():
                 self.pieces[self.n-2][i] = -1
         '''
         self.pieces[5][5] = 1
+        self.pieces[1][5] = 1
         self.pieces[6][4] = -1
 
     # add [][] indexer syntax to the Board
