@@ -85,7 +85,13 @@ class CheckersGame(Game):
         if player == 1:
             return board
         else:
-            return -np.rot90(board,2)
+            newB = [None]*self.n
+            for i in range(self.n):
+                newB[i] = [0]*self.n
+            for i in range(self.n):
+                for j in range(self.n):
+                    newB[self.n-1-i][self.n-1-j] = -board[i][j]
+            return newB
 
     def getSymmetries(self,board, pi):
         # LR mirror only
