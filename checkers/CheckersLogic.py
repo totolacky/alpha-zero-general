@@ -64,9 +64,6 @@ class Board():
                 if self[x][y]==color or self[x][y]==color*2:
                     newmoves = self.get_moves_for_square((x,y))
                     moves.update(newmoves)
-        print("Possible Moves:")
-        print(moves)
-        print("Possible Moves ends here")
         return list(moves)
 
     def game_over(self):
@@ -112,8 +109,9 @@ class Board():
             if (color * direction[0] > 0 or abs(color) == 2) and (0 <= x+direction[0] and self.n-1 >= x+direction[0] and 0 <= y+direction[1] and self.n-1 >= y+direction[1]):
                 if self[x+direction[0]][y+direction[1]] == 0:
                     moves.append(((x,y),direction))
-                elif self[x+direction[0]][y+direction[1]] * color < 0 and self[x+2*direction[0]][y+2*direction[1]] == 0:
-                    moves.append(((x,y),tuple(2*i for i in direction)))
+                elif 0 <= x+2*direction[0] and self.n-1 >= x+2*direction[0] and 0 <= y+2*direction[1] and self.n-1 >= y+2*direction[1]:
+                    if self[x+direction[0]][y+direction[1]] * color < 0 and self[x+2*direction[0]][y+2*direction[1]] == 0:
+                        moves.append(((x,y),tuple(2*i for i in direction)))
         # return the generated move list
         return moves
 
