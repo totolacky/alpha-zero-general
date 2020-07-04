@@ -24,7 +24,7 @@ class Board():
         for i in range(self.n):
             self.pieces[i] = [0]*self.n
 
-        '''
+        
         # Set up the initial pieces.
         for i in range(self.n):
             if (i+0)%2 == 0:
@@ -39,6 +39,7 @@ class Board():
         self.pieces[5][5] = 1
         self.pieces[1][5] = 1
         self.pieces[6][4] = -1
+        '''
 
     # add [][] indexer syntax to the Board
     def __getitem__(self, index): 
