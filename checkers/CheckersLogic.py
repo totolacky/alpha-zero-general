@@ -131,6 +131,9 @@ class Board():
         if abs(z) == 2:
             self[x+z//2][y+w//2] = 0
 
+        if (x+z==0 or x+z==self.n-1) and abs(self[x+z][y+w]) == 1:
+            self[x+z][y+w] = 2*self[x+z][y+w]
+
 '''
     def _discover_move(self, origin, direction):
         """ Returns the endpoint for a legal move, starting at the given origin,
