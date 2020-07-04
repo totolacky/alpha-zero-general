@@ -44,6 +44,9 @@ class CheckersGame(Game):
         b = Board(self.n)
         b.pieces = np.copy(board)
         move = self.action2move(action)
+        if player == -1:
+            (x,y),(z,w) = move
+            move = ((self.n-1-x, self.n-1-y),(-z, -w))
         b.execute_move(move, player)
         return (b.pieces, -player)
 
