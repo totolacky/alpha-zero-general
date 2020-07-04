@@ -129,7 +129,8 @@ class Board():
         # Add the piece to the empty square.
 
         print("Let's MOVE!!!")
-
+        print(move)
+        print("THAT's how we're gonna move")
         ((x,y),(z,w)) = move
         print(x,y,z,w)
         self[x+z][y+w] = self[x][y]
