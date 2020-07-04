@@ -79,7 +79,7 @@ class CheckersGame(Game):
 
     def getCanonicalForm(self, board, player):
         # return state if player==1, else return -state if player==-1
-        return player*board
+        return player*np.flipud(board)
 
     def getSymmetries(board, pi):
         # LR mirror only
