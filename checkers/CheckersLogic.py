@@ -68,7 +68,7 @@ class Board():
                 if self[x][y]==color or self[x][y]==color*2:
                     newmoves = self.get_moves_for_square((x,y))
                     moves.update(newmoves)
-        print(moves)
+        #print(moves)
         return list(moves)
 
     def game_over(self):
@@ -130,11 +130,11 @@ class Board():
 
         # Add the piece to the empty square.
 
-        print("Let's MOVE!!!")
-        print(move)
-        print("THAT's how we're gonna move")
-        ((x,y),(z,w)) = move
-        print(x,y,z,w)
+        #print("Let's MOVE!!!")
+        #print(move)
+        #print("THAT's how we're gonna move")
+        #((x,y),(z,w)) = move
+        #print(x,y,z,w)
         self[x+z][y+w] = self[x][y]
         self[x][y] = 0
 
