@@ -1,5 +1,6 @@
 import numpy as np
 
+n = 8
 
 class RandomPlayer():
     def __init__(self, game):
@@ -58,12 +59,12 @@ class GreedyCheckersPlayer():
         candidates.sort()
         return candidates[0][1]
 
-def action2move(self, action):
+def action2move(action):
     multiplier = (action//4)%2+1
-    xval = (action//8)//(self.n//2)
-    yval = (action//8)%(self.n//2)*2 + xval%2
+    xval = (action//8)//(n//2)
+    yval = (action//8)%(n//2)*2 + xval%2
     return ((xval, yval), ((-1+2*(action%2))*multiplier, (-1+2*((action%4)//2))*multiplier))
 
-def move2action(self, x, y, z, w):
+def move2action(x, y, z, w):
     direction = (z+2*w+3)//2 if abs(z) == 1 else (z//2+w+3)//2
-    return (self.n//2*x + y//2) * 8 + direction
+    return (n//2*x + y//2) * 8 + direction
