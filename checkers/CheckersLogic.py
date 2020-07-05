@@ -155,6 +155,14 @@ class Board():
         if (x+z==0 or x+z==self.n-1) and abs(self[x+z][y+w]) == 1:
             self[x+z][y+w] = 2*self[x+z][y+w]
 
+    square_content = {
+        -2: "V",
+        -1: "X",
+        +0: "-",
+        +1: "O",
+        +2: "D"
+    }
+
     def display(self):
         print("   ", end="")
         for y in range(self.n):
@@ -165,7 +173,7 @@ class Board():
             print(y, "|", end="")    # print the row #
             for x in range(self.n):
                 piece = self[y][x]    # get the piece to print
-                print(CheckersGame.square_content[piece], end=" ")
+                print(square_content[piece], end=" ")
             print("|")
 
         print("-----------------------")
