@@ -125,6 +125,11 @@ class MCTS():
         next_s, next_player = self.game.getNextState(canonicalBoard, 1, a)
         next_s = self.game.getCanonicalForm(next_s, next_player)
 
+        Game.display(canonicalBoard)
+        print(action2move(a))
+        Game.display(next_s)
+
+
         v = self.search(next_s)
 
         if (s, a) in self.Qsa:
@@ -137,3 +142,9 @@ class MCTS():
 
         self.Ns[s] += 1
         return -v
+
+def action2move(action):
+    multiplier = (action//4)%2+1
+    xval = (action//8)//(n//2)
+    yval = (action//8)%(n//2)*2 + xval%2
+    return ((xval, yval), ((-1+2*(action%2))*multiplier, (-1+2*((action%4)//2))*multiplier))

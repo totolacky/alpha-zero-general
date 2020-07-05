@@ -49,7 +49,6 @@ class CheckersGame(Game):
             (x,y),(z,w) = move
             move = ((self.n-1-x, self.n-1-y),(-z, -w))
         b.execute_move(move, player)
-        self.display((b.pieces, board[1]+1))
         return ((b.pieces, board[1]+1), -player)
 
     ''' 
