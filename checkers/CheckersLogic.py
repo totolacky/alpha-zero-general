@@ -10,6 +10,8 @@ Board data:
 Squares are stored and manipulated as (x,y) tuples.
 x is the column, y is the row.
 '''
+import numpy as np
+
 class Board():
 
     # list of all 8 directions on the board, as (x,y) offsets
