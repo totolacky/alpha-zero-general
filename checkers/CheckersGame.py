@@ -132,7 +132,7 @@ class CheckersGame(Game):
         for y in range(n):
             print(y, "|", end="")    # print the row #
             for x in range(n):
-                piece = board[y][x]    # get the piece to print
+                piece = board[0][y][x]    # get the piece to print
                 print(CheckersGame.square_content[piece], end=" ")
             print("|")
 
