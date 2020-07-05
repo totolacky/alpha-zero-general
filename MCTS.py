@@ -125,9 +125,9 @@ class MCTS():
         next_s, next_player = self.game.getNextState(canonicalBoard, 1, a)
         next_s = self.game.getCanonicalForm(next_s, next_player)
 
-        Game.display(canonicalBoard)
+        display(canonicalBoard)
         print(action2move(a))
-        Game.display(next_s)
+        display(next_s)
 
 
         v = self.search(next_s)
@@ -148,3 +148,19 @@ def action2move(action):
     xval = (action//8)//(n//2)
     yval = (action//8)%(n//2)*2 + xval%2
     return ((xval, yval), ((-1+2*(action%2))*multiplier, (-1+2*((action%4)//2))*multiplier))
+
+def display(board):
+    n = board[0].shape[0]
+    print("   ", end="")
+    for y in range(n):
+        print(y, end=" ")
+    print("")
+    print("-----------------------")
+    for y in range(n):
+        print(y, "|", end="")    # print the row #
+        for x in range(n):
+            piece = board[0][y][x]    # get the piece to print
+            print(CheckersGame.square_content[piece], end=" ")
+        print("|")
+
+    print("-----------------------")
