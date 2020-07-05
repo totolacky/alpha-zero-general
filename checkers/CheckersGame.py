@@ -20,11 +20,12 @@ class CheckersGame(Game):
 
     def __init__(self, n):
         self.n = n
+        self.count = 0
 
     def getInitBoard(self):
         # return initial board (numpy board)
         b = Board(self.n)
-        return np.array(b.pieces)
+        return (np.array(b.pieces),0)
 
     def getBoardSize(self):
         # (a,b) tuple
@@ -40,15 +41,15 @@ class CheckersGame(Game):
         # if player takes action on board, return next (board,player)
         # action must be a valid move
         if action == self.n*self.n*4:   # When you don't move
-            return (board, -player)
+            return ((board[0], board[1]+1), -player)
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = np.copy(board[0])
         move = self.action2move(action)
         if player == -1:
             (x,y),(z,w) = move
             move = ((self.n-1-x, self.n-1-y),(-z, -w))
         b.execute_move(move, player)
-        return (b.pieces, -player)
+        return ((b.pieces, board[1]+1), -player)
 
     ''' 
     Move direction represented by action%8:
@@ -64,7 +65,7 @@ class CheckersGame(Game):
         # return a fixed size binary vector
         valids = [0]*self.getActionSize()
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = np.copy(board[0])
         legalMoves =  b.get_legal_moves(player)
         if len(legalMoves)==0:
             valids[-1]=1
@@ -77,7 +78,7 @@ class CheckersGame(Game):
         # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
         # player = 1
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = np.copy(board[0])
         return b.game_over()
 
     def getCanonicalForm(self, board, player):
@@ -88,15 +89,15 @@ class CheckersGame(Game):
             newB = np.zeros((self.n, self.n))
             for i in range(self.n):
                 for j in range(self.n):
-                    newB[self.n-1-i][self.n-1-j] = -board[i][j]
-            return newB
+                    newB[self.n-1-i][self.n-1-j] = -board[0][i][j]
+            return (newB, board[1])
 
     def getSymmetries(self,board, pi):
         # LR mirror only
         assert(len(pi) == self.getActionSize())  # 1 for pass
         l = [(board,pi)]
 
-        newB = np.fliplr(board)
+        newB = np.fliplr(board[0])
         newPi = [0]*self.getActionSize()
         for i in range(self.getActionSize()-1):
             if i%2 == 0:
@@ -104,25 +105,25 @@ class CheckersGame(Game):
             else:
               newPi[i] = pi[i-1]
         newPi[self.getActionSize()-1] = pi[self.getActionSize()-1]
-        l += [(newB,newPi)]
+        l += [((newB,board[1]),newPi)]
         return l
 
     def stringRepresentation(self, board):
-        return board.tostring()
+        return board[0].tostring()
         #return ','.join(str(item) for innerlist in board for item in innerlist)
 
     def stringRepresentationReadable(self, board):
-        board_s = "".join(self.square_content[square] for row in board for square in row)
+        board_s = "".join(self.square_content[square] for row in board[0] for square in row)
         return board_s
 
     def getScore(self, board, player):
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = np.copy(board[0])
         return b.countScore(player)
 
     @staticmethod
     def display(board):
-        n = board.shape[0]
+        n = board[0].shape[0]
         print("   ", end="")
         for y in range(n):
             print(y, end=" ")
