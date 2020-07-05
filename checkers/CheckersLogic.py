@@ -19,6 +19,7 @@ class Board():
         "Set up initial board configuration."
 
         self.n = n
+        self.counter = 0
         # Create the empty board array.
         self.pieces = [None]*self.n
         for i in range(self.n):
@@ -139,8 +140,11 @@ class Board():
         self[x+z][y+w] = self[x][y]
         self[x][y] = 0
 
+        self.counter += 1
+
         if abs(z) == 2:
             self[x+z//2][y+w//2] = 0
+            self.counter = 0
 
         if (x+z==0 or x+z==self.n-1) and abs(self[x+z][y+w]) == 1:
             self[x+z][y+w] = 2*self[x+z][y+w]

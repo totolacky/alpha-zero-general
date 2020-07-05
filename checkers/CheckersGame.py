@@ -78,7 +78,8 @@ class CheckersGame(Game):
         # player = 1
         b = Board(self.n)
         b.pieces = np.copy(board)
-        return b.game_over()
+        #return b.game_over()
+        return 2
 
     def getCanonicalForm(self, board, player):
         # return state if player==1, else return -state if player==-1
