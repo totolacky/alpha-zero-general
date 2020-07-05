@@ -50,7 +50,7 @@ class Board():
         for i in range(self.n):
             for j in range(self.n):
                 if (i+j)%2==0:
-                    self.pieces[i][j] = 1
+                    self.pieces[i][j] = 2
                     self.display()
                     print(self.get_legal_moves(1))
                     self.pieces[i][j] = 0
