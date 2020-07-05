@@ -149,6 +149,14 @@ def action2move(action):
     yval = (action//8)%(n//2)*2 + xval%2
     return ((xval, yval), ((-1+2*(action%2))*multiplier, (-1+2*((action%4)//2))*multiplier))
 
+square_content = {
+    -2: "V",
+    -1: "X",
+    +0: "-",
+    +1: "O",
+    +2: "D"
+}
+
 def display(board):
     n = board[0].shape[0]
     print("   ", end="")
@@ -160,7 +168,7 @@ def display(board):
         print(y, "|", end="")    # print the row #
         for x in range(n):
             piece = board[0][y][x]    # get the piece to print
-            print(CheckersGame.square_content[piece], end=" ")
+            print(square_content[piece], end=" ")
         print("|")
 
     print("-----------------------")
