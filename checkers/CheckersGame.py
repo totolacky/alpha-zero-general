@@ -85,7 +85,7 @@ class CheckersGame(Game):
         if player == 1:
             return board
         else:
-            newB = np.zeros(self.n, self.n)
+            newB = np.zeros((self.n, self.n))
             for i in range(self.n):
                 for j in range(self.n):
                     newB[self.n-1-i][self.n-1-j] = -board[i][j]
