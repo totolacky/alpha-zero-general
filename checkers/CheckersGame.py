@@ -110,7 +110,8 @@ class CheckersGame(Game):
         return l
 
     def stringRepresentation(self, board):
-        return board.tostring()
+        #return board.tostring()
+        return ','.join(str(item) for innerlist in board for item in innerlist)
 
     def stringRepresentationReadable(self, board):
         board_s = "".join(self.square_content[square] for row in board for square in row)

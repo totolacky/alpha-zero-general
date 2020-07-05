@@ -24,7 +24,7 @@ class Board():
         for i in range(self.n):
             self.pieces[i] = [0]*self.n
 
-        
+
         # Set up the initial pieces.
         for i in range(self.n):
             if (i+0)%2 == 0:
