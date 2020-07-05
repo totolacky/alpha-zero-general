@@ -80,7 +80,7 @@ class MCTS():
             # terminal node
             return -self.Es[s]
 
-        if canonicalBoard[1] > 300:
+        if canonicalBoard[1] > 150:
             return 0
 
         if s not in self.Ps:
