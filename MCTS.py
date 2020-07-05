@@ -80,7 +80,7 @@ class MCTS():
             # terminal node
             return -self.Es[s]
 
-        if depth > 900:
+        if depth > 300:
             return 0
 
         if s not in self.Ps:
