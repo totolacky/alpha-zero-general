@@ -35,7 +35,7 @@ class Board():
         for i in range(self.n):
             self.pieces[i] = [0]*self.n
 
-        '''
+
         # Set up the initial pieces.
         for i in range(self.n):
             if (i+0)%2 == 0:
@@ -54,6 +54,7 @@ class Board():
                     self.display()
                     print(self.get_legal_moves(1))
                     self.pieces[i][j] = 0
+        '''
 
 
     # add [][] indexer syntax to the Board
