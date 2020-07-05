@@ -43,6 +43,7 @@ class Board():
             for j in range(self.n):
                 if (i+j)%2==0:
                     self.pieces[i][j] = 1
+                    self.display()
                     print(self.get_legal_moves(1))
                     self.pieces[i][j] = 0
 
@@ -153,6 +154,21 @@ class Board():
 
         if (x+z==0 or x+z==self.n-1) and abs(self[x+z][y+w]) == 1:
             self[x+z][y+w] = 2*self[x+z][y+w]
+
+    def display(self):
+        print("   ", end="")
+        for y in range(self.n):
+            print(y, end=" ")
+        print("")
+        print("-----------------------")
+        for y in range(self.n):
+            print(y, "|", end="")    # print the row #
+            for x in range(self.n):
+                piece = self[y][x]    # get the piece to print
+                print(CheckersGame.square_content[piece], end=" ")
+            print("|")
+
+        print("-----------------------")
 
 '''
     def _discover_move(self, origin, direction):
