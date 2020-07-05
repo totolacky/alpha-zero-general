@@ -127,6 +127,7 @@ class MCTS():
 
         display(canonicalBoard)
         print(action2move(a))
+        print("moves: "+str(canonicalBoard[1]))
         display(next_s)
 
 
