@@ -128,10 +128,10 @@ class MCTS():
         next_s, next_player = self.game.getNextState(canonicalBoard, 1, a)
         next_s = self.game.getCanonicalForm(next_s, next_player)
 
-        display(canonicalBoard)
-        print(action2move(a))
-        print("moves: "+str(canonicalBoard[1]))
-        display(next_s)
+        #display(canonicalBoard)
+        #print(action2move(a))
+        #print("moves: "+str(canonicalBoard[1]))
+        #display(next_s)
 
 
         v = self.search(next_s)
