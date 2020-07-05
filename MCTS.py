@@ -81,7 +81,7 @@ class MCTS():
             return -self.Es[s]
 
         if canonicalBoard[1] > 150:
-            return 0
+            return self.game.getScore()/32
 
         if s not in self.Ps:
             # leaf node
