@@ -79,6 +79,8 @@ class CheckersGame(Game):
         # player = 1
         b = Board(self.n)
         b.pieces = np.copy(board[0])
+        if board[1] > 150:
+            return 2
         return b.game_over()
 
     def getCanonicalForm(self, board, player):
