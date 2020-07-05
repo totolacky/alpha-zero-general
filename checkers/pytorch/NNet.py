@@ -54,8 +54,8 @@ class NNetWrapper(NeuralNet):
                 print(boards)
                 print(boards[0])
                 print(np.array(boards[0]))
-                print(np.array(boards[0]).astype(np.float64))
-                boards = torch.FloatTensor(np.array(boards[0]).astype(np.float64))
+                print(np.array(boards[0]).astype(np.float64)[0])
+                boards = torch.FloatTensor(np.array(boards[0]).astype(np.float64)[0])
                 target_pis = torch.FloatTensor(np.array(pis))
                 target_vs = torch.FloatTensor(np.array(vs).astype(np.float64))
 
