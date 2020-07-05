@@ -85,9 +85,7 @@ class CheckersGame(Game):
         if player == 1:
             return board
         else:
-            newB = [None]*self.n
-            for i in range(self.n):
-                newB[i] = [0]*self.n
+            newB = np.zeros(self.n, self.n)
             for i in range(self.n):
                 for j in range(self.n):
                     newB[self.n-1-i][self.n-1-j] = -board[i][j]
@@ -110,8 +108,8 @@ class CheckersGame(Game):
         return l
 
     def stringRepresentation(self, board):
-        #return board.tostring()
-        return ','.join(str(item) for innerlist in board for item in innerlist)
+        return board.tostring()
+        #return ','.join(str(item) for innerlist in board for item in innerlist)
 
     def stringRepresentationReadable(self, board):
         board_s = "".join(self.square_content[square] for row in board for square in row)
