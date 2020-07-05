@@ -1,6 +1,6 @@
 import numpy as np
 
-n = 8
+n = 6
 
 class RandomPlayer():
     def __init__(self, game):
