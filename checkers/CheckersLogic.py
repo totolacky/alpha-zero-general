@@ -86,6 +86,8 @@ class Board():
             return -1
         elif player2 == 0:
             return 1
+        elif self.counter > 50:
+            return 2
         else:
             return 0
 
