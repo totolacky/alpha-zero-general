@@ -143,6 +143,8 @@ class MCTS():
         self.Ns[s] += 1
         return -v
 
+n = 8
+
 def action2move(action):
     multiplier = (action//4)%2+1
     xval = (action//8)//(n//2)
