@@ -21,12 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
      rm -rf /var/lib/apt/lists/*
 
 # Install miniconda, pytorch and other useful python libraries
-RUN curl -o ~/miniconda.sh -O  https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh  && \
+RUN curl -o ~/miniconda.sh -O  https://repo.anaconda.com/miniconda/Miniconda3-py37_4.8.3-Linux-x86_64.sh  && \
 chmod +x ~/miniconda.sh && \
 ~/miniconda.sh -b -p /opt/conda && \
 rm ~/miniconda.sh && \
 /opt/conda/bin/conda install numpy pyyaml scipy cython jupyter ipython mkl mkl-include && \
-/opt/conda/bin/conda install -c soumith magma-cuda90 && \
+/opt/conda/bin/conda install -c pytorch magma-cuda90 && \
 /opt/conda/bin/conda install pytorch=0.4.1 -c pytorch && \
 /opt/conda/bin/conda clean -ya
 
@@ -36,7 +36,26 @@ ENV PATH /opt/conda/bin:$PATH
 WORKDIR /opt/pytorch
 # pip install custom module listed in requirements.txt
 COPY ./docker/requirements.txt .
-RUN pip install -U pip && pip install -r requirements.txt
+RUN apt-get update
+RUN apt-get install -y pkg-config
+RUN pip install -U pip && \
+pip install cffi==1.11.5 && \
+pip install coloredlogs==14.0 && \
+pip install cython==0.28.3 && \
+pip install flask==1.0 && \
+pip install gitpython==2.1.11 && \
+pip install matplotlib==2.1.1 && \
+pip install numpy==1.14.5 && \
+pip install pandas==0.23.1 && \
+pip install scipy==1.1.0 && \
+pip install -U scikit-learn && \
+pip install -U scikit-image && \
+pip install torchfile==0.1.0 && \
+pip install torchvision==0.2.1 && \
+pip install tqdm==4.19.5 && \
+pip install visdom==0.1.7
+
+# RUN pip install -r requirements.txt
 
 WORKDIR /workspace
 RUN chmod -R a+w /workspace

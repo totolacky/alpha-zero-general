@@ -29,7 +29,6 @@ class MCTS():
         """
         This function performs numMCTSSims simulations of MCTS starting from
         canonicalBoard.
-
         Returns:
             probs: a policy vector where the probability of the ith action is
                    proportional to Nsa[(s,a)]**(1./temp)
@@ -49,10 +48,7 @@ class MCTS():
 
         counts = [x ** (1. / temp) for x in counts]
         counts_sum = float(sum(counts))
-        if counts_sum == 0:
-            probs = [1/len(counts) for x in counts]
-        else:
-            probs = [x / counts_sum for x in counts]
+        probs = [x / counts_sum for x in counts]
         return probs
 
     def search(self, canonicalBoard):
@@ -60,17 +56,14 @@ class MCTS():
         This function performs one iteration of MCTS. It is recursively called
         till a leaf node is found. The action chosen at each node is one that
         has the maximum upper confidence bound as in the paper.
-
         Once a leaf node is found, the neural network is called to return an
         initial policy P and a value v for the state. This value is propagated
         up the search path. In case the leaf node is a terminal state, the
         outcome is propagated up the search path. The values of Ns, Nsa, Qsa are
         updated.
-
         NOTE: the return values are the negative of the value of the current
         state. This is done since v is in [-1,1] and if v is the value of a
         state for the current player, then its value is -v for the other player.
-
         Returns:
             v: the negative of the value of the current canonicalBoard
         """
@@ -83,12 +76,9 @@ class MCTS():
             # terminal node
             return -self.Es[s]
 
-        if canonicalBoard[1] > 150:
-            return self.game.getScore(canonicalBoard, 1)/32
-
         if s not in self.Ps:
             # leaf node
-            self.Ps[s], v = self.nnet.predict(canonicalBoard[0])
+            self.Ps[s], v = self.nnet.predict(canonicalBoard)
             valids = self.game.getValidMoves(canonicalBoard, 1)
             self.Ps[s] = self.Ps[s] * valids  # masking invalid moves
             sum_Ps_s = np.sum(self.Ps[s])
@@ -128,12 +118,6 @@ class MCTS():
         next_s, next_player = self.game.getNextState(canonicalBoard, 1, a)
         next_s = self.game.getCanonicalForm(next_s, next_player)
 
-        #display(canonicalBoard)
-        #print(action2move(a))
-        #print("moves: "+str(canonicalBoard[1]))
-        #display(next_s)
-
-
         v = self.search(next_s)
 
         if (s, a) in self.Qsa:
@@ -146,35 +130,3 @@ class MCTS():
 
         self.Ns[s] += 1
         return -v
-
-n = 8
-
-def action2move(action):
-    multiplier = (action//4)%2+1
-    xval = (action//8)//(n//2)
-    yval = (action//8)%(n//2)*2 + xval%2
-    return ((xval, yval), ((-1+2*(action%2))*multiplier, (-1+2*((action%4)//2))*multiplier))
-
-square_content = {
-    -2: "V",
-    -1: "X",
-    +0: "-",
-    +1: "O",
-    +2: "D"
-}
-
-def display(board):
-    n = board[0].shape[0]
-    print("   ", end="")
-    for y in range(n):
-        print(y, end=" ")
-    print("")
-    print("-----------------------")
-    for y in range(n):
-        print(y, "|", end="")    # print the row #
-        for x in range(n):
-            piece = board[0][y][x]    # get the piece to print
-            print(square_content[piece], end=" ")
-        print("|")
-
-    print("-----------------------")
