@@ -4,7 +4,7 @@ sys.path.append('..')
 from Game import Game
 from .JanggiLogic import Board
 import numpy as np
-from JanggiConstants import *
+from .JanggiConstants import *
 
 class JanggiGame(Game):
     square_content = {
@@ -83,6 +83,7 @@ class JanggiGame(Game):
 
         Returns:
             nextBoard: board after applying action
+            curPlayer: the player to play
         """
         # if player takes action on board, return next (board,player)
         # action must be a valid move
@@ -97,15 +98,14 @@ class JanggiGame(Game):
         return (b.pieces, b.b_params, b.rep_dict)
 
     # Required
-    def getValidMoves(self, board, player):
+    def getValidMoves(self, board):
         """
         Input:
             board: current board
-            player: current player
 
         Returns:
             validMoves: a binary vector of length self.getActionSize(), 1 for
-                        moves that are valid from the current board and player,
+                        moves that are valid from the current board,
                         0 for invalid moves
         """
         # return a fixed size binary vector
@@ -130,7 +130,7 @@ class JanggiGame(Game):
 
         Returns:
             r: 0 if game has not ended.
-            Normalized Cho score between -1 ~ 1 if game is over
+            Cho score (+-1) if game is over
         """
         # return 0 if not ended, 1 if player Cho won, -1 if player Cho lost
         b = Board(self.c1, self.c2)
@@ -152,16 +152,22 @@ class JanggiGame(Game):
         """
         return np.array([board[0], board[1][N_CUR_PLAYER], board[1][N_MOVE_CNT]]).tostring()
 
-    def getScore(self, board, player):
+    def getScore(self, board):
         b = Board(self.c1, self.c2)
         b.pieces = np.copy(board[0])
         b.b_params = np.copy(board[1])
         b.rep_dict = board[2].copy()
 
+        player = b.b_params[N_CUR_PLAYER]
+
         if player == PLAYER_HAN:
             return b.b_params[N_HAN_SCORE] - b.b_params[N_CHO_SCORE]
         else:
             return b.b_params[N_CHO_SCORE] - b.b_params[N_HAN_SCORE]
+
+    def getPlayer(self, board):
+        b_params = board[1]
+        return b_params[N_CUR_PLAYER]
 
     @staticmethod
     def display(board):
