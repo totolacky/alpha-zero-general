@@ -11,6 +11,8 @@ Squares are stored and manipulated as (x,y) tuples.
 x is the column, y is the row.
 '''
 import numpy as np
+from JanggiConstants import *
+from collections import defaultdict
 
 class Board():
     def __init__(self, c1, c2):
@@ -18,316 +20,810 @@ class Board():
         "Set up initial board configuration."
         
         """
-        board = (pieces, rep_set)
-            pieces = [arr[nm, nx, ny] for timestep t CAT ... CAT arr[nm, nx, ny] for timestep t-(T-1) CAT ones(nm, nx, ny)*current player CAT ones(nm, nx, ny)*move count]
-            rep_set: the set of all previous board states, that can possibly be repeated (wiped out when B moves forward, or a piece is captured)
-            canonical_rep_set: rep_set, but with canonical board representations
-
-        canonical board = board
-            Do not use canonical boards. This is because 楚 gets an additional 1.5 points, making it assymetric with 漢.
-
-        The network input form of the board should be...
-            config[0] ~ config[T-1], ones(nm, nx, ny)*pieces[T], ones(nm, nx, ny)*pieces[T+1] concatenated
-            with possible rotations to keep the current player's K at the bottom
+        board = (pieces, (han_pcs, cho_pcs, move_cnt, curr_player, han_score, cho_score), rep_dict)
         """
-
-        self.nx = 9     # board width
-        self.ny = 10    # board height
-        self.nm = 14    # number of state planes per board (7 for 楚, 7 for 漢)
-        self.nt = 4     # number of timesteps recorded
-        self.nl = 2     # number of aux. info (current player & move count)
-        self.ns = self.nm * self.nt + self.nl   # number of state planes
-        self.na = 58    # number of action planes (excluding turn skip)
 
         # Create the empty board state.
-        self.pieces = [None]*self.ns
-        for i in range(self.ns):
-            self.pieces[i] = [0]*self.nx
-            for j in range(self.nx):
-                self.pieces[i][j] = [0]*self.ny
-
-        # Create the empty repetition sets.
-        self.rep_set = {}
-        
-        # move count are already set to 0
+        self.pieces = [None]*CONFIG_T
+        for i in range(CONFIG_S):
+            self.pieces[i] = [0]*CONFIG_X
+            for j in range(CONFIG_X):
+                self.pieces[i][j] = [0]*CONFIG_Y
 
         # Set up first player's pieces.
-        self.pieces[0][4][1] = 1    # K
-        self.pieces[1][0][0] = 1    # C
-        self.pieces[1][8][0] = 1    # C
-        self.pieces[2][1][2] = 1    # P
-        self.pieces[2][7][2] = 1    # P
+        self.pieces[0][4][1] = NK   # K
+        self.pieces[0][0][0] = NC   # C
+        self.pieces[0][8][0] = NC   # C
+        self.pieces[0][1][2] = NP   # P
+        self.pieces[0][7][2] = NP   # P
 
-        self.pieces[3][1][0] = int(c1==1 or c1==2)    # M
-        self.pieces[3][2][0] = int(c1==0 or c1==3)    # M
-        self.pieces[3][6][0] = int(c1==1 or c1==3)    # M
-        self.pieces[3][7][0] = int(c1==0 or c1==2)    # M
+        self.pieces[0][1][0] = NM * int(c1==1 or c1==2)    # M
+        self.pieces[0][2][0] = NM * int(c1==0 or c1==3)    # M
+        self.pieces[0][6][0] = NM * int(c1==1 or c1==3)    # M
+        self.pieces[0][7][0] = NM * int(c1==0 or c1==2)    # M
 
-        self.pieces[4][1][0] = int(c1==0 or c1==3)    # X
-        self.pieces[4][2][0] = int(c1==1 or c1==2)    # X
-        self.pieces[4][6][0] = int(c1==0 or c1==2)    # X
-        self.pieces[4][7][0] = int(c1==1 or c1==3)    # X
+        self.pieces[0][1][0] = NX * int(c1==0 or c1==3)    # X
+        self.pieces[0][2][0] = NX * int(c1==1 or c1==2)    # X
+        self.pieces[0][6][0] = NX * int(c1==0 or c1==2)    # X
+        self.pieces[0][7][0] = NX * int(c1==1 or c1==3)    # X
 
-        self.pieces[5][3][0] = 1    # S
-        self.pieces[5][5][0] = 1    # S
-        self.pieces[6][0][3] = 1    # B
-        self.pieces[6][2][3] = 1    # B
-        self.pieces[6][4][3] = 1    # B
-        self.pieces[6][6][3] = 1    # B
-        self.pieces[6][8][3] = 1    # B
+        self.pieces[0][3][0] = NS    # S
+        self.pieces[0][5][0] = NS    # S
+        self.pieces[0][0][3] = NB    # B
+        self.pieces[0][2][3] = NB    # B
+        self.pieces[0][4][3] = NB    # B
+        self.pieces[0][6][3] = NB    # B
+        self.pieces[0][8][3] = NB    # B
 
         # Set up opponent's pieces.
-        self.pieces[7][4][8] = 1    # K
-        self.pieces[8][0][9] = 1    # C
-        self.pieces[8][8][9] = 1    # C
-        self.pieces[9][1][7] = 1    # P
-        self.pieces[9][7][7] = 1    # P
+        self.pieces[0][4][8] = -NK    # K
+        self.pieces[0][0][9] = -NC    # C
+        self.pieces[0][8][9] = -NC    # C
+        self.pieces[0][1][7] = -NP    # P
+        self.pieces[0][7][7] = -NP    # P
 
-        self.pieces[10][1][9] = int(c1==0 or c1==3)    # M
-        self.pieces[10][2][9] = int(c1==1 or c1==2)    # M
-        self.pieces[10][6][9] = int(c1==0 or c1==2)    # M
-        self.pieces[10][7][9] = int(c1==1 or c1==3)    # M
+        self.pieces[0][1][9] = -NM * int(c2==0 or c2==3)    # M
+        self.pieces[0][2][9] = -NM * int(c2==1 or c2==2)    # M
+        self.pieces[0][6][9] = -NM * int(c2==0 or c2==2)    # M
+        self.pieces[0][7][9] = -NM * int(c2==1 or c2==3)    # M
 
-        self.pieces[11][1][9] = int(c1==1 or c1==2)    # X
-        self.pieces[11][2][9] = int(c1==0 or c1==3)    # X
-        self.pieces[11][6][9] = int(c1==1 or c1==3)    # X
-        self.pieces[11][7][9] = int(c1==0 or c1==2)    # X
+        self.pieces[0][1][9] = -NX * int(c2==1 or c2==2)    # X
+        self.pieces[0][2][9] = -NX * int(c2==0 or c2==3)    # X
+        self.pieces[0][6][9] = -NX * int(c2==1 or c2==3)    # X
+        self.pieces[0][7][9] = -NX * int(c2==0 or c2==2)    # X
 
-        self.pieces[12][3][9] = 1    # S
-        self.pieces[12][5][9] = 1    # S
-        self.pieces[13][0][6] = 1    # B
-        self.pieces[13][2][6] = 1    # B
-        self.pieces[13][4][6] = 1    # B
-        self.pieces[13][6][6] = 1    # B
-        self.pieces[13][8][6] = 1    # B
+        self.pieces[0][3][9] = -NS    # S
+        self.pieces[0][5][9] = -NS    # S
+        self.pieces[0][0][6] = -NB    # B
+        self.pieces[0][2][6] = -NB    # B
+        self.pieces[0][4][6] = -NB    # B
+        self.pieces[0][6][6] = -NB    # B
+        self.pieces[0][8][6] = -NB    # B
 
-    # add [][] indexer syntax to the Board
-    def __getitem__(self, index): 
-        return self.pieces[index]
+        # Convert to numpy array
+        self.pieces = np.array(self.pieces)
 
-    def countDiff(self, color):
-        """Counts the # pieces of the given color
-        (1 for white, -1 for black, 0 for empty spaces)"""
-        count = 0
-        for y in range(self.n):
-            for x in range(self.n):
-                if self[x][y]==color:
-                    count += 1
-                if self[x][y]==-color:
-                    count -= 1
-        return count
+        # Set up params: han_pcs/cho_pcs (bitmap indicating the live pieces), move_cnt and curr_player
+        han_pcs = 34133    # 10000/10/10/10/10/10/1
+        cho_pcs = 34133    # 10000/10/10/10/10/10/1
+        move_cnt = 0
+        cur_player = 0
+        han_score = 73.5
+        cho_score = 72
+        captured = False
+        is_bic = False
+        self.b_params = np.array([han_pcs, cho_pcs, move_cnt, cur_player, han_score, cho_score, captured, is_bic])
 
-    def get_legal_moves(self, color):
-        """Returns all the legal moves for the given color.
-        (1 for white, -1 for black
-        """
+        # Create the empty repetition set
+        self.rep_dict = {}
+        self.rep_dict = defaultdict(lambda:0, self.rep_dict)
+
+    def get_legal_moves(self):
+        """Returns all the legal moves for the current board."""
         moves = set()  # stores the legal moves.
 
         # Get all the squares with pieces of the given color.
-        for y in range(self.n):
-            for x in range(self.n):
-                if self[x][y]==color:
-                    newmoves = self.get_moves_for_square((x,y))
+        for y in range(CONFIG_Y):
+            for x in range(CONFIG_X):
+                if (self.pieces[0][x][y] == 0):
+                    continue
+                elif abs(self.pieces[0][x][y]) == NK:
+                    newmoves = self.get_moves_for_K(x,y)
                     moves.update(newmoves)
+                elif abs(self.pieces[0][x][y]) == NC:
+                    newmoves = self.get_moves_for_C(x,y)
+                    moves.update(newmoves)
+                elif abs(self.pieces[0][x][y]) == NP:
+                    newmoves = self.get_moves_for_P(x,y)
+                    moves.update(newmoves)
+                elif abs(self.pieces[0][x][y]) == NM:
+                    newmoves = self.get_moves_for_M(x,y)
+                    moves.update(newmoves)
+                elif abs(self.pieces[0][x][y]) == NX:
+                    newmoves = self.get_moves_for_X(x,y)
+                    moves.update(newmoves)
+                elif abs(self.pieces[0][x][y]) == NS:
+                    newmoves = self.get_moves_for_S(x,y)
+                    moves.update(newmoves)
+                elif abs(self.pieces[0][x][y]) == NB:
+                    newmoves = self.get_moves_for_B(x,y)
+                    moves.update(newmoves)
+                else:
+                    assert False
+
+        # Add turn skip
+        moves.update([(58, 0, 0)])
+
         return list(moves)
 
-    def has_legal_moves(self, color):
-        for y in range(self.n):
-            for x in range(self.n):
-                if self[x][y]==color:
-                    newmoves = self.get_moves_for_square((x,y))
-                    if len(newmoves)>0:
-                        return True
-        return False
+    def get_moves_for_K(self, x, y):
+        """Returns all the legal moves of K that use the given square as a base."""
+        # Assert that the given piece is a K, and it is in a valid place
+        assert abs(self.pieces[0][x][y]) == NK
+        assert x >= 3 and x <= 5 and y >= 0 and y <= 2
 
-    def get_moves_for_square(self, square):
-        """Returns all the legal moves that use the given square as a base.
-        That is, if the given square is (3,4) and it contains a black piece,
-        and (3,5) and (3,6) contain white pieces, and (3,7) is empty, one
-        of the returned moves is (3,7) because everything from there to (3,4)
-        is flipped.
-        """
-        (x,y) = square
+        my_sign = np.sign(self.pieces[0][x][y])
 
-        # determine the color of the piece.
-        color = self[x][y]
+        # Ordinary moves are same as S
+        moves = self.get_moves_for_S(x, y)
+        
+        # Draw move
+        for i in range(9):
+            if (abs(self.pieces[0][x][y+i+1]) == NK):
+                moves.append((16+i, x, y))
+            elif (abs(self.pieces[0][x][y+i+1]) != 0):
+                break
 
-        # skip empty source squares.
-        if color==0:
-            return None
+        # return the generated move list
+        return moves
+    
+    def get_moves_for_C(self, x, y):
+        """Returns all the legal moves of C that use the given square as a base."""
+        # Assert that the given piece is a C
+        assert abs(self.pieces[0][x][y]) == NC
 
-        # search all possible directions.
+        my_sign = np.sign(self.pieces[0][x][y])
+
         moves = []
-        for direction in self.__directions:
-            move = self._discover_move(square, direction)
-            if move:
-                # print(square,move,direction)
-                moves.append(move)
+        for i in range(8): # 0 ~ 7: (1, 0) ~ (8, 0)
+            if (x+i+1 >= CONFIG_X):
+                break
+            if (self.pieces[0][x+i+1][y] == 0): # Empty space
+                moves.append((i, x, y))
+                continue
+            elif (np.sign(self.pieces[0][x+i+1][y] != my_sign)):    # Capture opponent piece
+                moves.append((i, x, y))
+            break
+
+        for i in range(8): # 8 ~ 15: (-1, 0) ~ (-8, 0)
+            if (x-i-1 < 0):
+                break
+            if (self.pieces[0][x-i-1][y] == 0): # Empty space
+                moves.append((8+i, x, y))
+                continue
+            elif (np.sign(self.pieces[0][x-i-1][y] != my_sign)):    # Capture opponent piece
+                moves.append((8+i, x, y))
+            break
+
+        for i in range(9): # 16 ~ 24: (0, 1) ~ (0, 9)
+            if (y+i+1 >= CONFIG_Y):
+                break
+            if (self.pieces[0][x][y+i+1] == 0): # Empty space
+                moves.append((16+i, x, y))
+                continue
+            elif (np.sign(self.pieces[0][x][y+i+1] != my_sign)):    # Capture opponent piece
+                moves.append((16+i, x, y))
+            break
+
+        for i in range(9): # 25 ~ 33: (0, -1) ~ (0, -9)
+            if (y-i-1 < 0):
+                break
+            if (self.pieces[0][x][y-i-1] == 0): # Empty space
+                moves.append((25+i, x, y))
+                continue
+            elif (np.sign(self.pieces[0][x][y-i-1] != my_sign)):    # Capture opponent piece
+                moves.append((25+i, x, y))
+            break
+
+        if ((x == 3 and (y == 0 or y == 7)) or (x == 4 and (y == 1 or y == 8))): # 34: (1, 1)
+            if self.pieces[0][x+1][y+1] == 0 or np.sign(self.pieces[0][x+1][y+1]) != my_sign:
+                moves.append((34, x, y))
+
+        if (x == 3 and (y == 0 or y == 7)): # 35: (2, 2)
+            if self.pieces[0][x+1][y+1] == 0 and (self.pieces[0][x+2][y+2] == 0 or np.sign(self.pieces[0][x+2][y+2]) != my_sign):
+                moves.append((35, x, y))
+
+        if ((x == 5 and (y == 0 or y == 7)) or (x == 4 and (y == 1 or y == 8))): # 36: (-1, 1)
+            if self.pieces[0][x-1][y+1] == 0 or np.sign(self.pieces[0][x-1][y+1]) != my_sign:
+                moves.append((36, x, y))
+
+        if (x == 5 and (y == 0 or y == 7)): # 37: (-2, 2)
+            if self.pieces[0][x-1][y+1] == 0 and (self.pieces[0][x-2][y+2] == 0 or np.sign(self.pieces[0][x-2][y+2]) != my_sign):
+                moves.append((37, x, y))
+
+        if ((x == 4 and (y == 1 or y == 8)) or (x == 5 and (y == 2 or y == 9))): # 38: (-1, -1)
+            if self.pieces[0][x-1][y-1] == 0 or np.sign(self.pieces[0][x-1][y-1]) != my_sign:
+                moves.append((38, x, y))
+
+        if (x == 4 and (y == 1 or y == 8)): # 39: (-2, -2)
+            if self.pieces[0][x-1][y-1] == 0 and (self.pieces[0][x-2][y-2] == 0 or np.sign(self.pieces[0][x-2][y-2]) != my_sign):
+                moves.append((39, x, y))
+
+        if ((x == 3 and (y == 2 or y == 9)) or (x == 4 and (y == 1 or y == 8))): # 40: (1, -1)
+            if self.pieces[0][x+1][y-1] == 0 or np.sign(self.pieces[0][x+1][y-1]) != my_sign:
+                moves.append((40, x, y))
+
+        if (x == 3 and (y == 2 or y == 9)): # 41: (2, -2)
+            if self.pieces[0][x+1][y-1] == 0 and (self.pieces[0][x+2][y-2] == 0 or np.sign(self.pieces[0][x+2][y-2]) != my_sign):
+                moves.append((41, x, y))
 
         # return the generated move list
         return moves
 
-    def execute_move(self, move, player):
-        """Perform the given move on the board; catch pieces as necessary.
-        color gives the color pf the piece to play (1=楚,-1=漢)
-        """
-        assert player == self.pieces[self.nm*self.nt][0][0] # assert that the correct player is given as input
+    def get_moves_for_P(self, x, y):
+        """Returns all the legal moves of P that use the given square as a base."""
+        # Assert that the given piece is a P
+        assert abs(self.pieces[0][x][y]) == NP
 
+        my_sign = np.sign(self.pieces[0][x][y])
+
+        moves = []
+        done = [False, False, False, False]
+        jump = [False, False, False, False]
+        for i in range(9):
+            for j in range(4):
+                if (done[j]):
+                    continue
+
+                if (j == 0):    # 0 ~ 7: (1, 0) ~ (8, 0)
+                    newx = x+i+1
+                    newy = y
+                    a = i
+                elif (j == 1):  # 8 ~ 15: (-1, 0) ~ (-8, 0)
+                    newx = x-i-1
+                    newy = y
+                    a = 8 + i
+                elif (j == 2):  # 16 ~ 24: (0, 1) ~ (0, 9)
+                    newx = x
+                    newy = y+i+1
+                    a = 16 + i
+                else:           # 25 ~ 33: (0, -1) ~ (0, -9)
+                    newx = x
+                    newy = y-i-1
+                    a = 25 + i
+                
+                # Invalid destination
+                if (newx >= CONFIG_X or newx < 0 or newy >= CONFIG_Y or newy < 0):
+                    done[j] = True
+                    continue
+                
+                # Empty destination
+                if (self.pieces[0][newx][newy] == 0): 
+                    if (jump[j]):
+                        moves.append((a, x, y))
+                    continue
+                # Nonempty destination
+                else:
+                    if (not jump[j]):  # The first piece that appear in such direction
+                        if (abs(self.pieces[0][newx][newy]) == NP):   # P cannot jump over another P
+                            done[j] = True
+                            continue
+                        else:
+                            jump[j] = True
+                            continue
+                    else:   # The second piece that appears in such direction
+                        if (abs(self.pieces[0][newx][newy]) != NP and np.sign(self.pieces[0][newx][newy] != my_sign):
+                            # Capture opponent piece
+                            # P cannot capture another P
+                            moves.append((a, x, y))
+                        done[j] = True
+                        continue
+        
+        if (x == 3 and (y == 0 or y == 7)): # 35: (2, 2)
+            if (self.pieces[0][x+1][y+1] != 0 \  
+                and abs(self.pieces[0][x+1][y+1]) != NP \
+                and (self.pieces[0][x+2][y+2] == 0 or np.sign(self.pieces[0][x+2][y+2]) != my_sign)\
+                and abs(self.pieces[0][x+2][y+2]) != NP):
+                moves.append((35, x, y))
+
+        if (x == 5 and (y == 0 or y == 7)): # 37: (-2, 2)
+            if (self.pieces[0][x-1][y+1] != 0 \
+                and abs(self.pieces[0][x-1][y+1]) != NP \
+                and (self.pieces[0][x-2][y+2] == 0 or np.sign(self.pieces[0][x-2][y+2]) != my_sign)\
+                and abs(self.pieces[0][x-2][y+2]) != NP):
+                moves.append((37, x, y))
+
+        if (x == 4 and (y == 1 or y == 8)): # 39: (-2, -2)
+            if (self.pieces[0][x-1][y-1] != 0 \
+                and abs(self.pieces[0][x-1][y-1]) != NP \
+                and (self.pieces[0][x-2][y-2] == 0 or np.sign(self.pieces[0][x-2][y-2]) != my_sign)\
+                and abs(self.pieces[0][x-2][y-2]) != NP):
+                moves.append((39, x, y))
+
+        if (x == 3 and (y == 2 or y == 9)): # 41: (2, -2)
+            if (self.pieces[0][x+1][y-1] != 0 \
+                and abs(self.pieces[0][x+1][y-1]) != NP \
+                and (self.pieces[0][x+2][y-2] == 0 or np.sign(self.pieces[0][x+2][y-2]) != my_sign)\
+                and abs(self.pieces[0][x+2][y-2]) != NP):
+                moves.append((41, x, y))
+
+        return moves
+
+    def get_moves_for_M(self, x, y):
+        """Returns all the legal moves of M that use the given square as a base."""
+        # Assert that the given piece is a M
+        assert abs(self.pieces[0][x][y]) == NM
+
+        my_sign = np.sign(self.pieces[0][x][y])
+
+        moves = []
+        if self._can_M_move(x, y, 2, 1):    # 42: (2, 1)
+            moves.append((42, x, y))
+
+        if self._can_M_move(x, y, 2, -1):   # 43: (2, -1)
+            moves.append((43, x, y))
+        
+        if self._can_M_move(x, y, -2, 1):   # 44: (-2, 1)
+            moves.append((44, x, y))
+        
+        if self._can_M_move(x, y, -2, -1):  # 45: (-2, -1)
+            moves.append((45, x, y))
+        
+        if self._can_M_move(x, y, 1, 2):    # 46: (1, 2)
+            moves.append((46, x, y))
+        
+        if self._can_M_move(x, y, 1, -2):   # 47: (1, -2)
+            moves.append((47, x, y))
+        
+        if self._can_M_move(x, y, -1, 2):   # 48: (-1, 2)
+            moves.append((48, x, y))
+        
+        if self._can_M_move(x, y, -1, -2):  # 49: (-1, -2)
+            moves.append((49, x, y))
+
+        return moves
+
+    def _can_M_move(self, x, y, dx, dy):
+        midx = x + dx/2 if (abs(dx) == 2) else x
+        midy = y if (abs(dx) == 2) else y + dy/2
+        finx = x + dx
+        finy = y + dy
+
+        # Cannot move if the final position is invalid
+        if finx < 0 or finx >= CONFIG_X or finy < 0 or finy >= CONFIG_Y:
+            return False
+        
+        # Cannot move if a piece is in the way
+        if self.pieces[0][midx][midy] != 0:
+            return False
+
+        # Cannot move if there is my piece in the final position
+        if self.pieces[0][finx][finy] != 0 and np.sign(self.pieces[0][finx][finy]) == np.sign(self.pieces[0][x][y]):
+            return False
+        
+        # Else, return true
+        return True
+
+    def get_moves_for_X(self, x, y):
+        """Returns all the legal moves of X that use the given square as a base."""
+        # Assert that the given piece is a X
+        assert abs(self.pieces[0][x][y]) == NX
+
+        moves = []
+        if self._can_X_move(x, y, 3, 2):    # 50: (3, 2)
+            moves.append((50, x, y))
+
+        if self._can_X_move(x, y, 3, -2):   # 51: (3, -2)
+            moves.append((51, x, y))
+        
+        if self._can_X_move(x, y, -3, 2):   # 52: (-3, 2)
+            moves.append((52, x, y))
+        
+        if self._can_X_move(x, y, -3, -2):  # 53: (-3, -2)
+            moves.append((53, x, y))
+        
+        if self._can_X_move(x, y, 2, 3):    # 54: (2, 3)
+            moves.append((54, x, y))
+        
+        if self._can_X_move(x, y, 2, -3):   # 55: (2, -3)
+            moves.append((55, x, y))
+        
+        if self._can_X_move(x, y, -2, 3):   # 56: (-2, 3)
+            moves.append((56, x, y))
+        
+        if self._can_X_move(x, y, -2, -3):  # 57: (-2, -3)
+            moves.append((57, x, y))
+
+        return moves
+
+    def _can_X_move(self, x, y, dx, dy):
+        midx1 = x + dx/3 if (abs(dx) == 3) else x
+        midy2 = y if (abs(dx) == 3) else y + dy/3
+        midx1 = x + dx/3*2 if (abs(dx) == 3) else x + dx/2
+        midy2 = y + dy/2 if (abs(dx) == 3) else y + dy/3*2
+        finx = x + dx
+        finy = y + dy
+
+        # Cannot move if the final position is invalid
+        if finx < 0 or finx >= CONFIG_X or finy < 0 or finy >= CONFIG_Y:
+            return False
+        
+        # Cannot move if a piece is in the way
+        if self.pieces[0][midx1][midy1] != 0 or self.pieces[0][midx2][midy2] != 0:
+            return False
+
+        # Cannot move if there is my piece in the final position
+        if self.pieces[0][finx][finy] != 0 and np.sign(self.pieces[0][finx][finy]) == np.sign(self.pieces[0][x][y]):
+            return False
+        
+        # Else, return true
+        return True
+
+    def get_moves_for_S(self, x, y):
+        """Returns all the legal moves of S that use the given square as a base."""
+        # Assert that the given piece is a S, and it is in a valid place
+        assert abs(self.pieces[0][x][y]) == NS
+        assert x >= 3 and x <= 5 and y >= 0 and y <= 2
+
+        my_sign = np.sign(self.pieces[0][x][y])
+
+        moves = []
+        if (x < 5): # 0: (1, 0)
+            if self.pieces[0][x+1][y] == 0 or np.sign(self.pieces[0][x+1][y]) != my_sign:
+                moves.append((0, x, y))
+        if (x > 3): # 8: (-1, 0)
+            if self.pieces[0][x-1][y] == 0 or np.sign(self.pieces[0][x-1][y]) != my_sign:
+                moves.append((8, x, y))
+        if (y < 2): # 16: (0, 1)
+            if self.pieces[0][x][y+1] == 0 or np.sign(self.pieces[0][x][y+1]) != my_sign:
+                moves.append((16, x, y))
+        if (y > 0): # 25: (0, -1)
+            if self.pieces[0][x][y-1] == 0 or np.sign(self.pieces[0][x][y-1]) != my_sign:
+                moves.append((25, x, y))
+        if ((x == 3 and y == 0) or (x == 4 and y == 1)): # 34: (1, 1)
+            if self.pieces[0][x+1][y+1] == 0 or np.sign(self.pieces[0][x+1][y+1]) != my_sign:
+                moves.append((34, x, y))
+        if ((x == 5 and y == 0) or (x == 4 and y == 1)): # 36: (-1, 1)
+            if self.pieces[0][x-1][y+1] == 0 or np.sign(self.pieces[0][x-1][y+1]) != my_sign:
+                moves.append((36, x, y))
+        if ((x == 4 and y == 1) or (x == 5 and y == 2)): # 38: (-1, -1)
+            if self.pieces[0][x-1][y-1] == 0 or np.sign(self.pieces[0][x-1][y-1]) != my_sign:
+                moves.append((38, x, y))
+        if ((x == 3 and y == 2) or (x == 4 and y == 1)): # 40: (1, -1)
+            if self.pieces[0][x+1][y-1] == 0 or np.sign(self.pieces[0][x+1][y-1]) != my_sign:
+                moves.append((40, x, y))
+
+        # return the generated move list
+        return moves
+
+    def get_moves_for_B(self, x, y):
+        """Returns all the legal moves of B that use the given square as a base."""
+        # Assert that the given piece is a B, and it is in a valid place
+        assert abs(self.pieces[0][x][y]) == NB
+
+        my_sign = np.sign(self.pieces[0][x][y])
+
+        moves = []
+        if (x < CONFIG_X - 1): # 0: (1, 0)
+            if self.pieces[0][x+1][y] == 0 or np.sign(self.pieces[0][x+1][y]) != my_sign:
+                moves.append((0, x, y))
+        if (x > 0): # 8: (-1, 0)
+            if self.pieces[0][x-1][y] == 0 or np.sign(self.pieces[0][x-1][y]) != my_sign:
+                moves.append((8, x, y))
+        if (y < CONFIG_Y - 1): # 16: (0, 1)
+            if self.pieces[0][x][y+1] == 0 or np.sign(self.pieces[0][x][y+1]) != my_sign:
+                moves.append((16, x, y))
+        if ((x == 3 and y == 7) or (x == 4 and y == 8)): # 34: (1, 1)
+            if self.pieces[0][x+1][y+1] == 0 or np.sign(self.pieces[0][x+1][y+1]) != my_sign:
+                moves.append((34, x, y))
+        if ((x == 5 and y == 7) or (x == 4 and y == 8)): # 36: (-1, 1)
+            if self.pieces[0][x-1][y+1] == 0 or np.sign(self.pieces[0][x-1][y+1]) != my_sign:
+                moves.append((36, x, y))
+
+        # return the generated move list
+        return moves
+
+    def execute_move(self, move):
+        """Perform the given move on the board; catch pieces as necessary.
+        color gives the color pf the piece to play
+        """
+        player = self.b_params[N_CUR_PLAYER]   # 0: Cho, 1: Han
         (a, x, y) = move    # a: action type, (x,y): board position where the action starts
 
         assert 0 <= a and a <= 58
 
         ## Duplicate the last board configuration and shift self.pieces
-        newboard = self.pieces[:self.nm].copy()
-        self.pieces = np.delete(self.pieces, self.nm*(self.nt-1):self.nm*self.nt, 0)
-        self.pieces = np.concatenate((newboard, self.pieces), 0)
+        self.pieces = np.delete(self.pieces, CONFIG_T - 1, 0)
+        self.pieces = np.concatenate((self.pieces[0].copy(), self.pieces), 0)
 
-        assert self.pieces.shape == (self.ns, self.nx, self.ny)
+        assert self.pieces.shape == (CONFIG_T, CONFIG_X, CONFIG_Y)
 
         ## Update current player & move count
-        self.pieces[self.nm*self.nt] *= -1      # change current player
-        self.pieces[self.nm*self.nt+1] += 1     # increment move count
+        self.b_params[N_CUR_PLAYER] = PLAYER_HAN if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else PLAYER_HAN  # change current player
+        self.b_params[N_MOVE_CNT] += 1  # increment move count
 
-        ## Return if the action is turn skip
+        ## Rotate board, set captured to false and return if the action is turn skip
         if (a == 58):
+            self.pieces = np.flip(self.pieces, [1,2])
+            self.b_params[N_CAPTURED] = False
             return
 
-        ## Otherwise, move the pieces if the action is not a turn skip
-        ## First, find the moving piece
+        ## Otherwise, add the current board to the rep_dict
+        canonical_board = self.pieces[0]
+        if (player == PLAYER_HAN):
+            canonical_board = numpy.flip(canonical_board, [0, 1])
+        self.rep_dict[canonical_board.tostring()] += 1
 
-        found = 0           # For debugging
-        piecetype = 0       # state plane idx of the piece
-        opp_piecetype = 0   # corresponding state plane idx of the opponent
-
-        for i in range(7):
-            # search for state planes 7~13 if player == -1
-            if (player == -1):
-                i = i+7
-
-            if (self.pieces[i][x][y] == 1):
-                found = found + 1   # For debugging
-                piecetype = i
-                opp_piecetype = if (player == 1) i+7 else i-7
-                self.pieces[i][x][y] = 0
-        
-        assert found == 1   # debugging: ensure that only 1 piece is found
+        ## Move the pieces. First, assert that the moving piece is present.
+        assert (self.pieces[0][x][y] != 0)
         
         ## Move the piece according to the given action
-
-        # Flags for emptying rep_set
-        captured = False        
-        B_irreversible = piecetype % 7 == 6
-
         if (a <= 7):
-            move_horizontal = False
-            x = x + (a + 1)
+            newx = x + (a + 1)
+            newy = y
         elif (a <= 15):
-            move_horizontal = False
-            x = x - (a - 7)
+            newx = x - (a - 7)
+            newy = y
         elif (a <= 24):
-            y = y + (a - 15)
+            newx = x
+            newy = y + (a - 15)
         elif (a <= 33):
-            y = y - (a - 24)
+            newx = x
+            newy = y - (a - 24)
         elif (a <= 35):
-            x = x + (a - 33)
-            y = y + (a - 33)
+            newx = x + (a - 33)
+            newy = y + (a - 33)
         elif (a <= 37):
-            x = x - (a - 35)
-            y = y + (a - 35)
+            newx = x - (a - 35)
+            newy = y + (a - 35)
         elif (a <= 39):
-            x = x - (a - 37)
-            y = y - (a - 37)
+            newx = x - (a - 37)
+            newy = y - (a - 37)
         elif (a <= 41):
-            x = x + (a - 39)
-            y = y - (a - 39)
+            newx = x + (a - 39)
+            newy = y - (a - 39)
         elif (a <= 43):
-            x = x + 2
-            y = if (a == 42) y + 1 else y - 1
+            newx = x + 2
+            newy = if (a == 42) y + 1 else y - 1
         elif (a <= 45):
-            x = x - 2
-            y = if (a == 44) y + 1 else y - 1
+            newx = x - 2
+            newy = if (a == 44) y + 1 else y - 1
         elif (a <= 47):
-            x = x + 1
-            y = if (a == 46) y + 2 else y - 2
+            newx = x + 1
+            newy = if (a == 46) y + 2 else y - 2
         elif (a <= 49):
-            x = x - 1
-            y = if (a == 48) y + 2 else y - 2
+            newx = x - 1
+            newy = if (a == 48) y + 2 else y - 2
         elif (a <= 51):
-            x = x + 3
-            y = if (a == 50) y + 2 else y - 2
+            newx = x + 3
+            newy = if (a == 50) y + 2 else y - 2
         elif (a <= 53):
-            x = x - 3
-            y = if (a == 52) y + 2 else y - 2
+            newx = x - 3
+            newy = if (a == 52) y + 2 else y - 2
         elif (a <= 55):
-            x = x + 2
-            y = if (a == 54) y + 3 else y - 3
+            newx = x + 2
+            newy = if (a == 54) y + 3 else y - 3
         elif (a <= 57):
-            x = x - 2
-            y = if (a == 56) y + 3 else y - 3
+            newx = x - 2
+            newy = if (a == 56) y + 3 else y - 3
         else:
-            # This should not happen
+            # This should not happen. Panic.
             assert False
 
-        assert x >= 0 and x < nx and y >= 0 and y < ny
+        assert x >= 0 and x < CONFIG_X and y >= 0 and y < CONFIG_Y
+        assert newx >= 0 and newx < CONFIG_X and newy >= 0 and newy < CONFIG_Y
         
-        self.pieces[piecetype][x][y] = 1
-        captured = self.pieces[opp_piecetype][x][y]
-        self.pieces[opp_piecetype][x][y] = 0
+        moving_piece = self.pieces[0][x][y]
+        captured_piece = self.pieces[0][newx][newy]
+        self.pieces[0][x][y] = 0
+        self.pieces[0][newx][newy] = moving_piece
 
-        ## 
+        ## Update han_pcs and cho_pcs
+        if (captured_piece != NULL):
+            if (player == PLAYER_HAN):  # Han captured Cho
+                self.b_params[N_CHO_PCS] = self.remove_piece(self.b_params[N_CHO_PCS], abs(captured_piece))
+            else:                       # Cho captured Han
+                self.b_params[N_HAN_PCS] = self.remove_piece(self.b_params[N_HAN_PCS], abs(captured_piece))
+        
+        ## Update han_score and cho_score
+        if (captured_piece != NULL):
+            if (player == PLAYER_HAN):  # Han captured Cho
+                self.b_params[N_CHO_SCORE] -= self._piece_score(abs(captured_piece))
+            else:                       # Cho captured Han
+                self.b_params[N_HAN_SCORE] -= self._piece_score(abs(captured_piece))
 
-    def _discover_move(self, origin, direction):
-        """ Returns the endpoint for a legal move, starting at the given origin,
-        moving by the given increment."""
-        x, y = origin
-        color = self[x][y]
-        flips = []
+        ## Update captured
+        self.b_params[N_CAPTURED] = captured_piece != NULL
 
-        for x, y in Board._increment_move(origin, direction, self.n):
-            if self[x][y] == 0:
-                if flips:
-                    # print("Found", x,y)
-                    return (x, y)
-                else:
-                    return None
-            elif self[x][y] == color:
-                return None
-            elif self[x][y] == -color:
-                # print("Flip",x,y)
-                flips.append((x, y))
+        ## Update is_bic
+        if (abs(moving_piece) == NK and abs(captured_piece) == NK):
+            self.b_params[N_IS_BIC] = True
+        
+        ## Flip board and return
+        self.pieces = np.flip(self.pieces, [1,2])
+        return
 
-    def _get_flips(self, origin, direction, color):
-        """ Gets the list of flips for a vertex and direction to use with the
-        execute_move function """
-        #initialize variables
-        flips = [origin]
+    def remove_piece(self, pcs, cap_piece):
+        """ Given han_pcs or cho_pcs, remove one of the captured piece"""
+        assert (1 <= cap_piece and cap_piece <= 7)
 
-        for x, y in Board._increment_move(origin, direction, self.n):
-            #print(x,y)
-            if self[x][y] == 0:
-                return []
-            if self[x][y] == -color:
-                flips.append((x, y))
-            elif self[x][y] == color and len(flips) > 0:
-                #print(flips)
-                return flips
+        if (cap_piece == NK):    # G
+            return pcs & ~(1<<0)
+        elif (cap_piece == NC):  # C
+            if (pcs & (1<<1) != 0):
+                return pcs & ~(1<<1)
+            elif (pcs & (1<<2) != 0):
+                return (pcs & ~(1<<2)) | (1<<1)
+            else:
+                assert False
+        elif (cap_piece == NP):  # P
+            if (pcs & (1<<3) != 0):
+                return pcs & ~(1<<3)
+            elif (pcs & (1<<4) != 0):
+                return (pcs & ~(1<<4)) | (1<<3)
+            else:
+                assert False
+        elif (cap_piece == NM):  # M
+            if (pcs & (1<<5) != 0):
+                return pcs & ~(1<<5)
+            elif (pcs & (1<<6) != 0):
+                return (pcs & ~(1<<6)) | (1<<5)
+            else:
+                assert False
+        elif (cap_piece == NX):  # X
+            if (pcs & (1<<7) != 0):
+                return pcs & ~(1<<7)
+            elif (pcs & (1<<8) != 0):
+                return (pcs & ~(1<<8)) | (1<<7)
+            else:
+                assert False
+        elif (cap_piece == NS):  # S
+            if (pcs & (1<<9) != 0):
+                return pcs & ~(1<<9)
+            elif (pcs & (1<<10) != 0):
+                return (pcs & ~(1<<10)) | (1<<9)
+            else:
+                assert False
+        elif (cap_piece == NB):  # B
+            if (pcs & (1<<11) != 0):
+                return pcs & ~(1<<11)
+            elif (pcs & (1<<12) != 0):
+                return (pcs & ~(1<<12)) | (1<<11)
+            elif (pcs & (1<<13) != 0):
+                return (pcs & ~(1<<13)) | (1<<12)
+            elif (pcs & (1<<14) != 0):
+                return (pcs & ~(1<<14)) | (1<<13)
+            elif (pcs & (1<<15) != 0):
+                return (pcs & ~(1<<15)) | (1<<14)
+            else:
+                assert False
 
-        return []
+    def _get_piece_num(self, pcs, query_piece):
+        """ Given han_pcs or cho_pcs, get the number of query_pieces"""
+        assert (1 <= query_piece and query_piece <= 7)
 
-    @staticmethod
-    def _increment_move(move, direction, n):
-        # print(move)
-        """ Generator expression for incrementing moves """
-        move = list(map(sum, zip(move, direction)))
-        #move = (move[0]+direction[0], move[1]+direction[1])
-        while all(map(lambda x: 0 <= x < n, move)): 
-        #while 0<=move[0] and move[0]<n and 0<=move[1] and move[1]<n:
-            yield move
-            move=list(map(sum,zip(move,direction)))
-            #move = (move[0]+direction[0],move[1]+direction[1])
+        num = 0
+
+        if (query_piece == NK):    # G
+            num = pcs & (1<<0)
+        elif (query_piece == NC):  # C
+            num = (pcs & (3<<1))>>1
+        elif (query_piece == NP):  # P
+            num = (pcs & (3<<3))>>3
+        elif (query_piece == NM):  # M
+            num = (pcs & (3<<5))>>5
+        elif (query_piece == NX):  # X
+            num = (pcs & (3<<7))>>7
+        elif (query_piece == NS):  # S
+            num = (pcs & (3<<9))>>9
+        elif (query_piece == NB):  # B
+            num = (pcs & (31<<11))>>11
+        else:
+            assert False
+        
+        if (num == 0):
+            return 0
+        else:
+            return int(np.log2(num) + 1)
     
-    def recentConfigToString(self):
-        """
-        Gives the string representation of the most recent board
-        """
-        return np.array2string(self.pieces[:self.nm])
+    def game_ended(self):
+        """ Return normalized Cho score if the game is over.
+            Return 0 otherwise. """
+        # Compare these with han(cho)_pcs & ATTACK_MASK
+        cannot_win_yangsa = [
+                    # ㅁㅁㅁ: BBBBB/SS/XX/MM/PP/CC/K
+            # 대삼능
+            264,    # 포양상: 00000/00/10/00/01/00/0
+            192,    # 양마상: 00000/00/01/10/00/00/0
+            288,    # 마양상: 00000/00/10/01/00/00/0
+
+            # 소삼능
+            2088,   # 포마졸: 00001/00/00/01/01/00/0
+            2184,   # 포상졸: 00001/00/01/00/01/00/0
+            2112,   # 양마졸: 00001/00/00/10/00/00/0
+            2304,   # 양상졸: 00001/00/10/00/00/00/0
+            4104,   # 포양졸: 00010/00/00/00/01/00/0
+            4128,   # 마양졸: 00010/00/00/01/00/00/0
+            4224,   # 상마졸: 00010/00/01/00/00/00/0
+            8192,   # ㅁ삼졸: 00100/00/00/00/00/00/0
+
+            # 차삼능
+            4106,   # 차이졸: 00010/00/00/00/01/01/0
+
+            # 차이능/
+            10,     # ㅁ차포: 00000/00/00/00/01/01/0
+            34,     # ㅁ차마: 00000/00/00/01/00/01/0
+            130,    # ㅁ차상: 00000/00/01/00/00/01/0
+            2050,   # ㅁ차졸: 00001/00/00/00/00/01/0
+        ]
+
+        cannot_win_wesa = [
+            2050,   # ㅁ차졸: 00001/00/00/00/00/01/0
+        ]
+
+        # The player that just made a move
+        last_player = PLAYER_HAN if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else PLAYER_CHO;
+
+        # If the game just ended with a bic, end the game
+        if self.b_params[N_IS_BIC]:
+            return self.b_params[N_CHO_SCORE]-self.b_params[N_HAN_SCORE] if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else self.b_params[N_HAN_SCORE]-self.b_params[N_CHO_SCORE]
+
+        # Game is over if a K is captured
+        if self._get_piece_num(self.b_params[N_HAN_PCS], NK) == 0:
+            return 1
+        if self._get_piece_num(self.b_params[N_CHO_PCS], NK) == 0:
+            return -1
+
+        # Game is over if no player can win
+        if ((self._get_piece_num(self.b_params[N_HAN_PCS], NS) == 2 and (self.b_params[N_CHO_PCS] & ATTACK_MASK) in cannot_win_yangsa) \
+                or (self._get_piece_num(self.b_params[N_HAN_PCS], NS) == 1 and (self.b_params[N_CHO_PCS] & ATTACK_MASK) in cannot_win_wesa)) \
+            and ((self._get_piece_num(self.b_params[N_CHO_PCS], NS) == 2 and (self.b_params[N_HAN_PCS] & ATTACK_MASK) in cannot_win_yangsa) \
+                or (self._get_piece_num(self.b_params[N_CHO_PCS], NS) == 1 and (self.b_params[N_HAN_PCS] & ATTACK_MASK) in cannot_win_wesa)):
+            return self.b_params[N_CHO_SCORE]-self.b_params[N_HAN_SCORE] if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else self.b_params[N_HAN_SCORE]-self.b_params[N_CHO_SCORE]
+
+        # Game is over if repetition happens 3 times
+        canonical_board = self.pieces[0]
+        if (player == PLAYER_HAN):
+            canonical_board = numpy.flip(canonical_board, [0, 1])
+        canon_string = canonical_board.tostring()
+
+        if (self.rep_dict[canon_string] >= 2):
+            # If both scores are under 30, check score
+            if (self.b_params[N_CHO_SCORE] < 30 and self.b_params[N_HAN_SCORE] < 30):
+                return self.b_params[N_CHO_SCORE]-self.b_params[N_HAN_SCORE] if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else self.b_params[N_HAN_SCORE]-self.b_params[N_CHO_SCORE]
+            # Otherwise, the last player lose
+            else:
+                return 1 if last_player == PLAYER_HAN else -1
+        
+        # For simplicity, the game is over when move_cnt hits 250.
+        if self.b_params[N_MOVE_CNT] >= 250:
+            return self.b_params[N_CHO_SCORE]-self.b_params[N_HAN_SCORE] if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else self.b_params[N_HAN_SCORE]-self.b_params[N_CHO_SCORE]
+        
+        # Game is over if bic is called when a player has score >= 30.
+        # The last player lose.
+        if (self.b_params[N_HAN_SCORE] >= 30 or self.b_params[N_CHO_SCORE] >= 30):
+            if (self._get_bic_called()):
+                return 1 if last_player == PLAYER_HAN else -1
+        
+        # If the game is not over, return 0.
+        return 0
+    
+    def _get_bic_called(self):
+        """ Return true if two K's are facing each other """
+        for i in range(3):
+            for j in range(3):
+                x = i+3
+                y = j
+
+                if (abs(self.pieces[0][x][y]) == NK):
+                    for k in range(9):
+                        newx = x
+                        newy = y+k+1
+                        
+                        if (newy >= CONFIG_Y):
+                            return False
+                        
+                        if (abs(self.pieces[0][newx][newy]) == NK):
+                            # Two K's are facing each other
+                            return True
+                        elif (abs(self.pieces[0][newx][newy]) != 0):
+                            # Two K's are not directly facing each other
+                            return False
+    
+    def _piece_score(self, piece):
+        if piece == NK:
+            return 0
+        elif piece == NC:
+            return 13
+        elif piece == NP:
+            return 7
+        elif piece == NM:
+            return 5
+        elif piece == NX:
+            return 3
+        elif piece == NS:
+            return 3
+        elif piece == NB:
+            return 2
+        else:
+            assert False

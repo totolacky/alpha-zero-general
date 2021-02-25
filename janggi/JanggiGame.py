@@ -4,6 +4,7 @@ sys.path.append('..')
 from Game import Game
 from .JanggiLogic import Board
 import numpy as np
+from JanggiConstants import *
 
 class JanggiGame(Game):
     square_content = {
@@ -44,11 +45,6 @@ class JanggiGame(Game):
         self.c1 = c1
         self.c2 = c2
 
-        self.nx = 9     # board width
-        self.ny = 10    # board height
-        self.ns = 16    # number of state planes
-        self.na = 58    # number of action planes (excluding turn skip)
-
     # Required
     def getInitBoard(self):
         """
@@ -58,8 +54,7 @@ class JanggiGame(Game):
         """
         # return initial board (numpy board) with repetition count dictionary
         b = Board(self.c1, self.c2)
-        d = {}
-        return (np.array(b.pieces), d)
+        return (b.pieces, b.b_params, b.rep_dict)
 
     # Required
     def getBoardSize(self):
@@ -77,29 +72,29 @@ class JanggiGame(Game):
             actionSize: number of all possible actions
         """
         # return number of actions
-        return self.nx*self.ny*self.na + 1
+        return CONFIG_X*CONFIG_Y*CONFIG_A + 1
 
     # Required
-    def getNextState(self, board, player, action):
+    def getNextState(self, board, action):
         """
         Input:
             board: current board (pieces)
-            player: current player (1 or -1)
             action: action taken by current player
 
         Returns:
             nextBoard: board after applying action
-            nextPlayer: player who plays in the next turn (should be -player)
         """
         # if player takes action on board, return next (board,player)
         # action must be a valid move
-        if action == self.nx*self.ny*self.na:
-            return (board, -player)
+
         b = Board(self.c1, self.c2)
-        b.pieces = np.copy(board)
-        move = (int(action/(self.nx*self.ny)), int((action%(self.nx*self.ny))/self.ny), action%self.ny) # (actionType, xCoord, yCoord)
-        b.execute_move(move, player)
-        return (b.pieces, -player)
+        b.pieces = np.copy(board[0])
+        b.b_params = np.copy(board[1])
+        b.rep_dict = board[2].copy() # Current board will be added in execute_move()
+        
+        move = (int(action/(CONFIG_X*CONFIG_Y)), int((action%(CONFIG_X*CONFIG_Y))/CONFIG_Y), action%CONFIG_Y) # (actionType, xCoord, yCoord)
+        b.execute_move(move)
+        return (b.pieces, b.b_params, b.rep_dict)
 
     # Required
     def getValidMoves(self, board, player):
@@ -115,118 +110,73 @@ class JanggiGame(Game):
         """
         # return a fixed size binary vector
         valids = [0]*self.getActionSize()
-        b = Board(self.n)
-        b.pieces = np.copy(board)
-        legalMoves =  b.get_legal_moves(player)
-        if len(legalMoves)==0:
-            valids[-1]=1
-            return np.array(valids)
-        for x, y in legalMoves:
-            valids[self.n*x+y]=1
+
+        b = Board(self.c1, self.c2)
+        b.pieces = np.copy(board[0])
+        b.b_params = np.copy(board[1])
+        b.rep_dict = board[2].copy()
+
+        legalMoves =  b.get_legal_moves()
+        for a, x, y in legalMoves:
+            valids[a*(CONFIG_X*CONFIG_Y) + x * CONFIG_Y + y] = 1
+
         return np.array(valids)
 
     # Required
-    def getGameEnded(self, board, player):
+    def getGameEnded(self, board):
         """
         Input:
             board: current board
-            player: current player (1 or -1)
 
         Returns:
-            r: 0 if game has not ended. 1 if player won, -1 if player lost,
-               small non-zero value for draw.
-               
+            r: 0 if game has not ended.
+            Normalized Cho score between -1 ~ 1 if game is over
         """
-        # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
-        # player = 1
-        b = Board(self.n)
-        b.pieces = np.copy(board)
-        if b.has_legal_moves(player):
-            return 0
-        if b.has_legal_moves(-player):
-            return 0
-        if b.countDiff(player) > 0:
-            return 1
-        return -1
+        # return 0 if not ended, 1 if player Cho won, -1 if player Cho lost
+        b = Board(self.c1, self.c2)
+        b.pieces = np.copy(board[0])
+        b.b_params = np.copy(board[1])
+        b.rep_dict = board[2].copy()
 
-    def getCanonicalForm(self, board, player):
-        """
-        Input:
-            board: current board
-            player: current player (1 or -1)
-
-        Returns:
-            canonicalBoard: returns canonical form of board. The canonical form
-                            should be independent of player. For e.g. in chess,
-                            the canonical form can be chosen to be from the pov
-                            of white. When the player is white, we can return
-                            board as is. When the player is black, we can invert
-                            the colors and return the board.
-        """
-        # return state if player==1, else return -state if player==-1
-        return player*board
-
-    # Required
-    def getSymmetries(self, board, pi):
-        """
-        Input:
-            board: current board
-            pi: policy vector of size self.getActionSize()
-
-        Returns:
-            symmForms: a list of [(board,pi)] where each tuple is a symmetrical
-                       form of the board and the corresponding pi vector. This
-                       is used when training the neural network from examples.
-        """
-        # mirror, rotational
-        assert(len(pi) == self.n**2+1)  # 1 for pass
-        pi_board = np.reshape(pi[:-1], (self.n, self.n))
-        l = []
-
-        for i in range(1, 5):
-            for j in [True, False]:
-                newB = np.rot90(board, i)
-                newPi = np.rot90(pi_board, i)
-                if j:
-                    newB = np.fliplr(newB)
-                    newPi = np.fliplr(newPi)
-                l += [(newB, list(newPi.ravel()) + [pi[-1]])]
-        return l
+        return b.game_ended()
 
     # Required
     def stringRepresentation(self, board):
         """
         Input:
-            board: current board
+            board: current board (pieces, b_params, rep_dict)
 
         Returns:
-            boardString: a quick conversion of board to a string format.
+            boardString: a quick conversion of board (pieces, cur_player, move_cnt) to a string format.
                          Required by MCTS for hashing.
         """
-        return board.tostring()
-
-    def stringRepresentationReadable(self, board):
-        board_s = "".join(self.square_content[square] for row in board for square in row)
-        return board_s
+        return np.array([board[0], board[1][N_CUR_PLAYER], board[1][N_MOVE_CNT]]).tostring()
 
     def getScore(self, board, player):
-        b = Board(self.n)
-        b.pieces = np.copy(board)
-        return b.countDiff(player)
+        b = Board(self.c1, self.c2)
+        b.pieces = np.copy(board[0])
+        b.b_params = np.copy(board[1])
+        b.rep_dict = board[2].copy()
+
+        if player == PLAYER_HAN:
+            return b.b_params[N_HAN_SCORE] - b.b_params[N_CHO_SCORE]
+        else:
+            return b.b_params[N_CHO_SCORE] - b.b_params[N_HAN_SCORE]
 
     @staticmethod
     def display(board):
-        n = board.shape[0]
-        print("   ", end="")
-        for y in range(n):
-            print(y, end=" ")
-        print("")
-        print("-----------------------")
-        for y in range(n):
-            print(y, "|", end="")    # print the row #
-            for x in range(n):
-                piece = board[y][x]    # get the piece to print
-                print(JanggiGame.square_content[piece], end=" ")
+        print("   ┌-------------------┐")
+        for i in range(10):
+            y = 9-i
+            print(" ", end="")
+            print(y, end=" | ")
+            for j in range(9):
+                x = j
+                print(JanggiGame.square_content[board[0][0][x][y]], end="")
+                if (x == 2 or x == 5) and (y >= 7 or y <= 2):
+                    print("|", end="")
+                else:
+                    print(" ", end="")
             print("|")
-
-        print("-----------------------")
+        print("   └-------------------┘")
+        print("     0 1 2 3 4 5 6 7 8")
