@@ -1,7 +1,5 @@
 import numpy as np
 
-n = 8
-
 class RandomPlayer():
     def __init__(self, game):
         self.game = game

@@ -13,9 +13,10 @@ import torch
 import torch.optim as optim
 
 from .CheckersNNet import CheckersNNet as chnet
+from ..CheckersGame import CheckersGame
 
 args = dotdict({
-    'lr': 0.001,
+    'lr': 0.2,
     'dropout': 0.3,
     'epochs': 10,
     'batch_size': 64,
@@ -51,7 +52,7 @@ class NNetWrapper(NeuralNet):
             for _ in t:
                 sample_ids = np.random.randint(len(examples), size=args.batch_size)
                 boards, pis, vs = list(zip(*[examples[i] for i in sample_ids]))
-                boards = torch.FloatTensor(np.array(boards[0])[0].astype(np.float64))
+                boards = torch.FloatTensor(np.array(boards).astype(np.float64))
                 target_pis = torch.FloatTensor(np.array(pis))
                 target_vs = torch.FloatTensor(np.array(vs).astype(np.float64))
 
@@ -83,9 +84,10 @@ class NNetWrapper(NeuralNet):
         start = time.time()
 
         # preparing input
+        board = CheckersGame.encodeBoard(board)
         board = torch.FloatTensor(board.astype(np.float64))
         if args.cuda: board = board.contiguous().cuda()
-        board = board.view(1, self.board_x, self.board_y)
+        board = board.view(5, self.board_x, self.board_y)
         self.nnet.eval()
         with torch.no_grad():
             pi, v = self.nnet(board)
