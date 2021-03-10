@@ -8,13 +8,13 @@ from random import shuffle
 import numpy as np
 from tqdm import tqdm
 
-from JanggiArena import JanggiArena
-from JanggiMCTS import JanggiMCTS
+from Arena import Arena
+from MCTS import MCTS
 
 log = logging.getLogger(__name__)
 
 
-class JanggiCoach():
+class Coach():
     """
     This class executes the self-play + learning. It uses the functions defined
     in Game and NeuralNet. args are specified in main.py.
@@ -25,7 +25,7 @@ class JanggiCoach():
         self.nnet = nnet
         self.pnet = self.nnet.__class__(self.game)  # the competitor network
         self.args = args
-        self.mcts = JanggiMCTS(self.game, self.nnet, self.args)
+        self.mcts = MCTS(self.game, self.nnet, self.args)
         self.trainExamplesHistory = []  # history of examples from args.numItersForTrainExamplesHistory latest iterations
         self.skipFirstSelfPlay = False  # can be overriden in loadTrainExamples()
 
@@ -41,33 +41,33 @@ class JanggiCoach():
         uses temp=0.
 
         Returns:
-            trainExamples: a list of examples of the form (encodedBoard, pi, v) #(canonicalBoard, currPlayer, pi,v)
+            trainExamples: a list of examples of the form (canonicalBoard, currPlayer, pi,v)
                            pi is the MCTS informed policy vector, v is +1 if
                            the player eventually won the game, else -1.
         """
         trainExamples = []
         board = self.game.getInitBoard()
+        self.curPlayer = 1
         episodeStep = 0
-        alternate = 1
 
         while True:
             episodeStep += 1
-            encodedBoard = self.game.encodeBoard(board)
+            canonicalBoard = self.game.getCanonicalForm(board, self.curPlayer)
             temp = int(episodeStep < self.args.tempThreshold)
 
-            pi = self.mcts.getActionProb(board, temp=temp)
-            trainExamples.append([encodedBoard, alternate, pi, None])
+            pi = self.mcts.getActionProb(canonicalBoard, temp=temp)
 
-            alternate = -alternate
+            sym = self.game.getSymmetries(canonicalBoard, pi)
+            for b, p in sym:
+                trainExamples.append([b, self.curPlayer, p, None])
 
             action = np.random.choice(len(pi), p=pi)
-            board = self.game.getNextState(board, action)
+            board, self.curPlayer = self.game.getNextState(board, self.curPlayer, action)
 
-            r = self.game.getGameEnded(board)
+            r = self.game.getGameEnded(board, self.curPlayer)
 
             if r != 0:
-                curPlayer = self.game.getPlayer(board)
-                return [(x[0], x[2], r * x[1]) for x in trainExamples]
+                return [(x[0], x[2], r * ((-1) ** (x[1] != self.curPlayer))) for x in trainExamples]
 
     def learn(self):
         """
@@ -86,7 +86,7 @@ class JanggiCoach():
                 iterationTrainExamples = deque([], maxlen=self.args.maxlenOfQueue)
 
                 for _ in tqdm(range(self.args.numEps), desc="Self Play"):
-                    self.mcts = JanggiMCTS(self.game, self.nnet, self.args)  # reset search tree
+                    self.mcts = MCTS(self.game, self.nnet, self.args)  # reset search tree
                     iterationTrainExamples += self.executeEpisode()
 
                 # save the iteration examples to the history 
@@ -109,24 +109,25 @@ class JanggiCoach():
             # training new network, keeping a copy of the old one
             self.nnet.save_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
             self.pnet.load_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
-            pmcts = JanggiMCTS(self.game, self.pnet, self.args)
+            pmcts = MCTS(self.game, self.pnet, self.args)
 
             self.nnet.train(trainExamples)
-            nmcts = JanggiMCTS(self.game, self.nnet, self.args)
+            nmcts = MCTS(self.game, self.nnet, self.args)
 
-            log.info('PITTING AGAINST PREVIOUS VERSION')
-            arena = JanggiArena(lambda x: np.argmax(pmcts.getActionProb(x, temp=0)),
-                          lambda x: np.argmax(nmcts.getActionProb(x, temp=0)), self.game)
-            pwins, nwins, draws = arena.playGames(self.args.arenaCompare)
+            # log.info('PITTING AGAINST PREVIOUS VERSION')
+            # arena = Arena(lambda x: np.argmax(pmcts.getActionProb(x, temp=0)),
+            #               lambda x: np.argmax(nmcts.getActionProb(x, temp=0)), self.game)
+            # pwins, nwins, draws = arena.playGames(self.args.arenaCompare)
 
-            log.info('NEW/PREV WINS : %d / %d ; DRAWS : %d' % (nwins, pwins, draws))
-            if pwins + nwins == 0 or float(nwins) / (pwins + nwins) < self.args.updateThreshold:
-                log.info('REJECTING NEW MODEL')
-                self.nnet.load_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
-            else:
-                log.info('ACCEPTING NEW MODEL')
-                self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(i))
-                self.nnet.save_checkpoint(folder=self.args.checkpoint, filename='best.pth.tar')
+            # log.info('NEW/PREV WINS : %d / %d ; DRAWS : %d' % (nwins, pwins, draws))
+            # if pwins + nwins == 0 or float(nwins) / (pwins + nwins) < self.args.updateThreshold:
+            #     log.info('REJECTING NEW MODEL')
+            #     self.nnet.load_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
+            # else:
+            #     log.info('ACCEPTING NEW MODEL')
+            log.info('SAVING NEW MODEL')
+            self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(i))
+            self.nnet.save_checkpoint(folder=self.args.checkpoint, filename='latest.pth.tar')
 
     def getCheckpointFile(self, iteration):
         return 'checkpoint_' + str(iteration) + '.pth.tar'

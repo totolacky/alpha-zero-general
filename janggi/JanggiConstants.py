@@ -25,11 +25,12 @@ PLAYER_HAN = 1
 ATTACK_MASK = 63998 # 11111/00/11/11/11/11/0
 
 # Board/State related constants
-CONFIG_X = 9     # board width
-CONFIG_Y = 10    # board height
-CONFIG_T = 4     # number of timesteps recorded
-CONFIG_L = 2     # number of aux. info (current player & move count)
-CONFIG_A = 58    # number of action planes (excluding turn skip)
+CONFIG_X = 9    # board width
+CONFIG_Y = 10   # board height
+CONFIG_T = 4    # number of timesteps recorded
+CONFIG_L = 2    # number of aux. info (current player & move count)
+CONFIG_A = 58   # number of action planes (excluding turn skip)
+CONFIG_M = 16   # number of board planes per timestamp
 
 # Others
 NULL = 0

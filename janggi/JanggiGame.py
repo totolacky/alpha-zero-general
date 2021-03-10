@@ -74,6 +74,14 @@ class JanggiGame(Game):
         # return number of actions
         return CONFIG_X*CONFIG_Y*CONFIG_A + 1
 
+    def getStateSize(self):
+        """
+        Returns:
+            stateSize: number planes in 1 state
+        """
+        # return number of actions
+        return CONFIG_M*CONFIG_T+CONFIG_L
+
     # Required
     def getNextState(self, board, action):
         """
@@ -150,7 +158,19 @@ class JanggiGame(Game):
             boardString: a quick conversion of board (pieces, cur_player, move_cnt) to a string format.
                          Required by MCTS for hashing.
         """
-        return np.array([board[0], board[1][N_CUR_PLAYER], board[1][N_MOVE_CNT]]).tostring()
+        canonical_board = board[0]
+        if (board[1][N_CUR_PLAYER] == PLAYER_HAN):
+            canonical_board = np.flip(canonical_board, [1, 2])
+        
+        # Add player/move count info
+        tmp = [0] * CONFIG_X
+        for i in range(CONFIG_X):
+            tmp[i] = [0] * CONFIG_Y
+        tmp[0][0] = board[1][N_CUR_PLAYER]
+        tmp[0][1] = board[1][N_MOVE_CNT]
+        canonical_board = np.concatenate((canonical_board, [tmp]), 0)
+
+        return np.array(canonical_board).tostring()
 
     def getScore(self, board):
         b = Board(self.c1, self.c2)
@@ -171,7 +191,7 @@ class JanggiGame(Game):
 
     @staticmethod
     def display(board):
-        print("   ┌-------------------┐")
+        print("   ---------------------")
         for i in range(10):
             y = 9-i
             print(" ", end="")
@@ -184,5 +204,71 @@ class JanggiGame(Game):
                 else:
                     print(" ", end="")
             print("|")
-        print("   └-------------------┘")
+        print("   ---------------------")
         print("     0 1 2 3 4 5 6 7 8")
+
+    @staticmethod
+    def encodeBoard(board):
+        encodedBoard = []
+
+        b = Board(0, 0)
+        b.pieces = np.copy(board[0])
+        b.b_params = np.copy(board[1])
+        b.rep_dict = board[2].copy()
+
+        player = b.b_params[N_CUR_PLAYER]
+        player_sign = 1 if player == PLAYER_CHO else -1
+        move_cnt = b.b_params[N_MOVE_CNT]
+
+        # Set up boards
+        for t in range(CONFIG_T):
+            pieces_t = b.pieces[t]
+
+            # Create an encoded board
+            enc_t = [0] * CONFIG_M
+            for i in range(CONFIG_M):
+                enc_t[i] = [0] * CONFIG_X
+                for j in range(CONFIG_X):
+                    enc_t[i][j] = [0] * CONFIG_Y
+            
+            # Fill in the pieces
+            for i in range(CONFIG_X):
+                for j in range(CONFIG_Y):
+                    if pieces_t[i][j] == 0:
+                        continue
+                    if np.sign(pieces_t[i][j]) == player_sign:
+                        enc_t[abs(pieces_t[i][j]) - 1][i][j] = 1
+                    else:
+                        enc_t[7 + abs(pieces_t[i][j]) - 1][i][j] = 1
+            
+            # Fill in repetition count
+            canonical_board = pieces_t
+            if (player == PLAYER_HAN):
+                canonical_board = np.flip(canonical_board, [0, 1])
+            repcnt = b.rep_dict[canonical_board.tostring()]
+            if (repcnt >= 1):
+                enc_t[14] = np.array(enc_t[14]) + 1
+            if (repcnt >= 2):
+                enc_t[15] = np.array(enc_t[15]) + 1
+
+            # Append to the encodedBoard
+            if t == 0:
+                encodedBoard = enc_t
+            else:
+                encodedBoard = np.concatenate((encodedBoard, enc_t), 0)
+
+        # Set up player
+        enc_player = [0] * CONFIG_X
+        for i in range(CONFIG_X):
+            enc_player[i] = [0] * CONFIG_Y
+        enc_player += player
+        encodedBoard = np.concatenate((encodedBoard, [enc_player]), 0)
+
+        # Set up move_cnt
+        enc_mv = [0] * CONFIG_X
+        for i in range(CONFIG_X):
+            enc_mv[i] = [0] * CONFIG_Y
+        enc_mv += move_cnt
+        encodedBoard = np.concatenate((encodedBoard, [enc_mv]), 0)
+
+        return np.array(encodedBoard)

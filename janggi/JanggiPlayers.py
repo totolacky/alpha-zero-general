@@ -21,18 +21,23 @@ class HumanJanggiPlayer():
     def play(self, board):
         # display(board)
         valid = self.game.getValidMoves(board)
+        cnt = 0
         for i in range(len(valid)):
             if valid[i]:
+                cnt = cnt+1
                 a,x,y = (int(i/(CONFIG_X*CONFIG_Y)), int((i%(CONFIG_X*CONFIG_Y))/CONFIG_Y), i%CONFIG_Y)
                 dx,dy = Board._action_to_dxdy(a)
-                print("[(",x,y,")(",x+dx,y+dy, end=")] ")
+                print("[("+str(x)+","+str(y)+"): ("+str(dx)+","+str(dy)+")]", end="\t")
+                if cnt%6 == 0:
+                    print("")
+        print("")
         while True:
             input_move = input()
             input_a = input_move.split(" ")
             if len(input_a) == 4:
                 try:
-                    x,y,nx,ny = [int(i) for i in input_a]
-                    a = Board._dxdy_to_action(nx-x, ny-y)
+                    x,y,dx,dy = [int(i) for i in input_a]
+                    a = Board._dxdy_to_action(dx, dy)
                     action = a*(CONFIG_X*CONFIG_Y) + x * CONFIG_Y + y
                     if valid[action]:
                         break
@@ -53,7 +58,7 @@ class GreedyJanggiPlayer():
         for a in range(self.game.getActionSize()):
             if valids[a]==0:
                 continue
-            nextBoard, _ = self.game.getNextState(board, a)
+            nextBoard = self.game.getNextState(board, a)
             score = self.game.getScore(nextBoard)
             candidates += [(-score, a)]
         candidates.sort()

@@ -12,23 +12,23 @@ from NeuralNet import NeuralNet
 import torch
 import torch.optim as optim
 
-from .JanggiNNet import JanggiNNet as jnnet
+from .CheckersNNet import CheckersNNet as chnet
+from ..CheckersGame import CheckersGame
 
 args = dotdict({
-    'lr': 0.1,
+    'lr': 0.01,
     'dropout': 0.3,
-    'epochs': 10,
-    'batch_size': 64,
+    'epochs': 5,
+    'batch_size': 256,
     'cuda': torch.cuda.is_available(),
-    'num_channels': 256,
+    'num_channels': 512,
 })
 
 
 class NNetWrapper(NeuralNet):
     def __init__(self, game):
-        self.nnet = jnnet(game, args)
+        self.nnet = chnet(game, args)
         self.board_x, self.board_y = game.getBoardSize()
-        self.state_stack = game.getStateSize()
         self.action_size = game.getActionSize()
 
         if args.cuda:
@@ -38,7 +38,7 @@ class NNetWrapper(NeuralNet):
         """
         examples: list of examples, each example is of form (board, pi, v)
         """
-        optimizer = optim.Adam(self.nnet.parameters())
+        optimizer = optim.Adam(self.nnet.parameters(), weight_decay = 1e-4)
 
         for epoch in range(args.epochs):
             print('EPOCH ::: ' + str(epoch + 1))
@@ -84,9 +84,10 @@ class NNetWrapper(NeuralNet):
         start = time.time()
 
         # preparing input
+        board = CheckersGame.encodeBoard(board)
         board = torch.FloatTensor(board.astype(np.float64))
         if args.cuda: board = board.contiguous().cuda()
-        board = board.view(self.state_stack, self.board_x, self.board_y)
+        board = board.view(5, self.board_x, self.board_y)
         self.nnet.eval()
         with torch.no_grad():
             pi, v = self.nnet(board)

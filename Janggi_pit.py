@@ -19,17 +19,17 @@ human_vs_cpu = True
 # g = JanggiGame(random.randint(0, 4), random.randint(0, 4))
 g = JanggiGame(0, 0)
 
-# # all players
-# rp = RandomPlayer(g).play
-# gp = GreedyJanggiPlayer(g).play
-# hp = HumanJanggiPlayer(g).play
+# all players
+rp = RandomPlayer(g).play
+gp = GreedyJanggiPlayer(g).play
+hp = HumanJanggiPlayer(g).play
 
 # # nnet players
 # n1 = NNet(g)
-# n1.load_checkpoint('./pretrained_models/janggi/pytorch/','8x8_100checkpoints_best.pth.tar')
+# n1.load_checkpoint('./temp/','checkpoint_5.pth.tar')
 
-# args1 = dotdict({'numMCTSSims': 50, 'cpuct':1.0})
-# mcts1 = MCTS(g, n1, args1)
+# args1 = dotdict({'numMCTSSims': 800, 'cpuct':1.0})
+# mcts1 = JanggiMCTS(g, n1, args1)
 # n1p = lambda x: np.argmax(mcts1.getActionProb(x, temp=0))
 
 # if human_vs_cpu:
@@ -43,7 +43,10 @@ g = JanggiGame(0, 0)
 
 #     player2 = n2p  # Player 2 is neural network if it's cpu vs cpu.
 
-# arena = Arena.Arena(n1p, player2, g, display=JanggiGame.display)
-arena = JanggiArena.JanggiArena(HumanJanggiPlayer(g).play, HumanJanggiPlayer(g).play, g, display=JanggiGame.display)
+n1p = hp
+player2 = gp
+
+arena = JanggiArena.JanggiArena(n1p, player2, g, display=JanggiGame.display)
+# arena = JanggiArena.JanggiArena(HumanJanggiPlayer(g).play, HumanJanggiPlayer(g).play, g, display=JanggiGame.display)
 
 print(arena.playGames(2, verbose=True))

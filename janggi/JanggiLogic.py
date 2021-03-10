@@ -103,7 +103,6 @@ class Board():
         moves = []  # stores the legal moves.
 
         legal_sign = 1 if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else -1
-        print(self.b_params[N_CUR_PLAYER])
 
         for y in range(CONFIG_Y):
             for x in range(CONFIG_X):
@@ -136,7 +135,6 @@ class Board():
     def get_moves_for_K(self, x, y):
         """Returns all the legal moves of K that use the given square as a base."""
         # Assert that the given piece is a K, and it is in a valid place
-        print((x,y))
         assert abs(self.pieces[0][x][y]) == NK
         assert x >= 3 and x <= 5 and y >= 0 and y <= 2
 
@@ -147,6 +145,8 @@ class Board():
         
         # Draw move
         for i in range(9):
+            if y+i+1 >= CONFIG_Y:
+                break
             if (abs(self.pieces[0][x][y+i+1]) == NK):
                 moves.append((16+i, x, y))
             elif (abs(self.pieces[0][x][y+i+1]) != 0):
@@ -223,7 +223,7 @@ class Board():
             if self.pieces[0][x-1][y-1] == 0 or np.sign(self.pieces[0][x-1][y-1]) != my_sign:
                 moves.append((38, x, y))
 
-        if (x == 4 and (y == 1 or y == 8)): # 39: (-2, -2)
+        if (x == 5 and (y == 2 or y == 9)): # 39: (-2, -2)
             if self.pieces[0][x-1][y-1] == 0 and (self.pieces[0][x-2][y-2] == 0 or np.sign(self.pieces[0][x-2][y-2]) != my_sign):
                 moves.append((39, x, y))
 
@@ -290,7 +290,7 @@ class Board():
                             jump[j] = True
                             continue
                     else:   # The second piece that appears in such direction
-                        if (abs(self.pieces[0][newx][newy]) != NP and np.sign(self.pieces[0][newx][newy] != my_sign)):
+                        if (abs(self.pieces[0][newx][newy]) != NP and np.sign(self.pieces[0][newx][newy]) != my_sign):
                             # Capture opponent piece
                             # P cannot capture another P
                             moves.append((a, x, y))
@@ -311,7 +311,7 @@ class Board():
                 and abs(self.pieces[0][x-2][y+2]) != NP):
                 moves.append((37, x, y))
 
-        if (x == 4 and (y == 1 or y == 8)): # 39: (-2, -2)
+        if (x == 5 and (y == 2 or y == 9)): # 39: (-2, -2)
             if (self.pieces[0][x-1][y-1] != 0 \
                 and abs(self.pieces[0][x-1][y-1]) != NP \
                 and (self.pieces[0][x-2][y-2] == 0 or np.sign(self.pieces[0][x-2][y-2]) != my_sign)\
@@ -624,6 +624,7 @@ class Board():
     def remove_piece(self, pcs, cap_piece):
         """ Given han_pcs or cho_pcs, remove one of the captured piece"""
         assert (1 <= cap_piece and cap_piece <= 7)
+        pcs = int(pcs)
 
         if (cap_piece == NK):    # G
             return pcs & ~(1<<0)
