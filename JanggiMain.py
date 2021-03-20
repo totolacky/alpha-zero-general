@@ -2,9 +2,9 @@ import logging
 
 import coloredlogs
 
-from Coach import Coach
-from checkers.CheckersGame import CheckersGame as Game
-from checkers.pytorch.NNet import NNetWrapper as nn
+from JanggiCoach import JanggiCoach as Coach
+from janggi.JanggiGame import JanggiGame as Game
+from janggi.pytorch.NNet import NNetWrapper as nn
 from utils import *
 
 import torch
@@ -15,7 +15,7 @@ coloredlogs.install(level='INFO')  # Change this to DEBUG to see more info.
 
 args = dotdict({
     'numIters': 10000,
-    'numEps': 40,              # Number of complete self-play games to simulate during a new iteration.
+    'numEps': 10,              # Number of complete self-play games to simulate during a new iteration.
     'tempThreshold': 15,        #
     'updateThreshold': 0,     # During arena playoff, new neural net will be accepted if threshold or more of games are won.
     'maxlenOfQueue': 200000,    # Number of game examples to train the neural networks.
@@ -27,20 +27,16 @@ args = dotdict({
     'load_model': False,
     'load_folder_file': ('./temp/','checkpoint_60.pth.tar'),
     'numItersForTrainExamplesHistory': 100,
-
-    'num_gpu_procs': 1,
-    'num_selfplay_procs': 5,
-
 })
 
 
 def main():
     log.info('GPU availability: %s', torch.cuda.is_available())
     log.info('Loading %s...', Game.__name__)
-    g = Game(6)
+    g = Game(0, 0)
 
     log.info('Loading %s...', nn.__name__)
-    nnet = nn(g, None)
+    nnet = nn(g)
 
     if args.load_model:
         log.info('Loading checkpoint "%s/%s"...', args.load_folder_file)

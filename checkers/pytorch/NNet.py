@@ -26,13 +26,16 @@ args = dotdict({
 
 
 class NNetWrapper(NeuralNet):
-    def __init__(self, game):
+    def __init__(self, game, state_dict):
         self.nnet = chnet(game, args)
         self.board_x, self.board_y = game.getBoardSize()
         self.action_size = game.getActionSize()
 
         if args.cuda:
             self.nnet.cuda()
+
+        if state_dict != None:
+            self.nnet.load_state_dict(state_dict)
 
     def train(self, examples):
         """

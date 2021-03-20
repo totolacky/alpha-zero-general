@@ -11,8 +11,25 @@ from tqdm import tqdm
 from Arena import Arena
 from MCTS import MCTS
 
+import torch.multiprocessing as mp
+from torch.multiprocessing import Pool
+
+from checkers.pytorch.NNet import NNetWrapper as nn
+
 log = logging.getLogger(__name__)
 
+class NoDaemonProcess(mp.Process):
+    # make 'daemon' attribute always return False
+    def _get_daemon(self):
+        return False
+    def _set_daemon(self, value):
+        pass
+    daemon = property(_get_daemon, _set_daemon)
+
+# We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
+# because the latter is only a wrapper function, not a proper class.
+# class NDPool(Pool):
+#     Process = NoDaemonProcess
 
 class Coach():
     """
@@ -23,13 +40,14 @@ class Coach():
     def __init__(self, game, nnet, args):
         self.game = game
         self.nnet = nnet
-        self.pnet = self.nnet.__class__(self.game)  # the competitor network
+        # self.pnet = self.nnet.__class__(self.game)  # the competitor network
         self.args = args
-        self.mcts = MCTS(self.game, self.nnet, self.args)
+        # self.mcts = MCTS(self.game, self.nnet, self.args)
         self.trainExamplesHistory = []  # history of examples from args.numItersForTrainExamplesHistory latest iterations
         self.skipFirstSelfPlay = False  # can be overriden in loadTrainExamples()
 
-    def executeEpisode(self):
+    @staticmethod
+    def executeEpisode(eeArgs):
         """
         This function executes one episode of self-play, starting with player 1.
         As the game is played, each turn is added as a training example to
@@ -45,29 +63,101 @@ class Coach():
                            pi is the MCTS informed policy vector, v is +1 if
                            the player eventually won the game, else -1.
         """
+        game, args, pipe_conn = eeArgs
+
         trainExamples = []
-        board = self.game.getInitBoard()
-        self.curPlayer = 1
+        board = game.getInitBoard()
+        curPlayer = 1
         episodeStep = 0
+
+        mcts = MCTS(game, pipe_conn, args)   # MCTS takes a pipe connection instead of nnet
+        # mcts = MCTS(game, nnet, args)
 
         while True:
             episodeStep += 1
-            canonicalBoard = self.game.getCanonicalForm(board, self.curPlayer)
-            temp = int(episodeStep < self.args.tempThreshold)
+            canonicalBoard = game.getCanonicalForm(board, curPlayer)
+            temp = int(episodeStep < args.tempThreshold)
 
-            pi = self.mcts.getActionProb(canonicalBoard, temp=temp)
+            pi = mcts.getActionProb(canonicalBoard, temp=temp)
 
-            sym = self.game.getSymmetries(canonicalBoard, pi)
+            sym = game.getSymmetries(canonicalBoard, pi)
             for b, p in sym:
-                trainExamples.append([b, self.curPlayer, p, None])
+                trainExamples.append([b, curPlayer, p, None])
 
             action = np.random.choice(len(pi), p=pi)
-            board, self.curPlayer = self.game.getNextState(board, self.curPlayer, action)
+            board, curPlayer = game.getNextState(board, curPlayer, action)
 
-            r = self.game.getGameEnded(board, self.curPlayer)
+            r = game.getGameEnded(board, curPlayer)
 
             if r != 0:
-                return [(x[0], x[2], r * ((-1) ** (x[1] != self.curPlayer))) for x in trainExamples]
+                return [(x[0], x[2], r * ((-1) ** (x[1] != curPlayer))) for x in trainExamples]
+    
+    @staticmethod
+    def nnProcess(nnProcArgs):
+        """
+        
+        """
+        game, state_dict, selfplay_pipes, kill_pipe = nnProcArgs
+
+        nnet = nn(game, state_dict)
+
+        while True:
+            # Check for incoming queries from all pipes
+            for conn in selfplay_pipes:
+                # If there are some, take care of them
+                if (conn.poll()):
+                    canonicalBoard = conn.recv()
+                    s, v = nnet.predict(canonicalBoard)
+                    conn.send((s, v))
+
+            # Check for kill signal, through kill_pipe
+            if (kill_pipe.poll()):
+                assert kill_pipe.recv() == True
+                return
+
+
+    @staticmethod
+    def parallelExecute(peArgs):
+        """
+        
+        """
+        game, args, state_dict, q = peArgs
+        numEps = args.numEps
+        num_selfplay_procs = args.num_selfplay_procs
+
+        res = []
+
+        for i in range(int(numEps / num_selfplay_procs)):
+            # Create pipes
+            nnC1, nnC2 = mp.Pipe()  # pipes for killing nnProcess
+            pipes = []  # pipes for nnProcess
+            pArgs = []  # pool args (with pipes for selfplayProcess)
+
+            for j in range(num_selfplay_procs):
+                c1, c2 = mp.Pipe()
+                pipes.append(c1)
+                pArgs.append((game, args, c2))
+
+            # Create the NN process
+            nnProc = mp.Process(target=Coach.nnProcess, args=[(game, state_dict, pipes, nnC2)])
+            nnProc.daemon = True
+            nnProc.start()
+
+            # Create self-play processes (with pool)
+            p = Pool(num_selfplay_procs)
+
+            # Join and append the results to res
+            for d in tqdm(p.map(Coach.executeEpisode, pArgs), total=len(pArgs)):
+                res += d
+            p.close()
+
+            # Kill the NN process
+            nnC1.send(True)
+            nnProc.join()
+
+        # Return res
+        q.put(res)
+        return
 
     def learn(self):
         """
@@ -85,9 +175,26 @@ class Coach():
             if not self.skipFirstSelfPlay or i > 1:
                 iterationTrainExamples = deque([], maxlen=self.args.maxlenOfQueue)
 
-                for _ in tqdm(range(self.args.numEps), desc="Self Play"):
-                    self.mcts = MCTS(self.game, self.nnet, self.args)  # reset search tree
-                    iterationTrainExamples += self.executeEpisode()
+                try:
+                    mp.set_start_method('spawn')
+                except RuntimeError:
+                    pass
+
+                procArg = []
+                q = mp.Queue()
+                state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}
+
+                procs = []
+                for j in range(self.args.num_gpu_procs):
+                    p = mp.Process(target = self.parallelExecute, args=((self.game, self.args, state_dict, q),))
+                    p.start()
+                    procs.append(p)
+                
+                for p in procs:
+                    p.join()
+
+                for j in range(self.args.num_gpu_procs):
+                    iterationTrainExamples += q.get()
 
                 # save the iteration examples to the history 
                 self.trainExamplesHistory.append(iterationTrainExamples)
@@ -106,28 +213,9 @@ class Coach():
                 trainExamples.extend(e)
             shuffle(trainExamples)
 
-            # training new network, keeping a copy of the old one
-            self.nnet.save_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
-            self.pnet.load_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
-            pmcts = MCTS(self.game, self.pnet, self.args)
-
+            log.info('TRAINING AND SAVING NEW MODEL')
             self.nnet.train(trainExamples)
-            nmcts = MCTS(self.game, self.nnet, self.args)
-
-            # log.info('PITTING AGAINST PREVIOUS VERSION')
-            # arena = Arena(lambda x: np.argmax(pmcts.getActionProb(x, temp=0)),
-            #               lambda x: np.argmax(nmcts.getActionProb(x, temp=0)), self.game)
-            # pwins, nwins, draws = arena.playGames(self.args.arenaCompare)
-
-            # log.info('NEW/PREV WINS : %d / %d ; DRAWS : %d' % (nwins, pwins, draws))
-            # if pwins + nwins == 0 or float(nwins) / (pwins + nwins) < self.args.updateThreshold:
-            #     log.info('REJECTING NEW MODEL')
-            #     self.nnet.load_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
-            # else:
-            #     log.info('ACCEPTING NEW MODEL')
-            log.info('SAVING NEW MODEL')
             self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(i))
-            self.nnet.save_checkpoint(folder=self.args.checkpoint, filename='latest.pth.tar')
 
     def getCheckpointFile(self, iteration):
         return 'checkpoint_' + str(iteration) + '.pth.tar'

@@ -34,6 +34,8 @@ class JanggiMCTS():
             probs: a policy vector where the probability of the ith action is
                    proportional to Nsa[(s,a)]**(1./temp)
         """
+        log.info("GetActionProb")
+
         for i in range(self.args.numMCTSSims):
             encodedBoard = JanggiGame.encodeBoard(board)
             self.search(board, encodedBoard)

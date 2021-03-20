@@ -15,7 +15,7 @@ class MCTS():
 
     def __init__(self, game, nnet, args):
         self.game = game
-        self.nnet = nnet
+        self.nnet = nnet    # pipe connection, not nnet itself
         self.args = args
         self.Qsa = {}  # stores Q values for s,a (as defined in the paper)
         self.Nsa = {}  # stores #times edge s,a was visited
@@ -79,7 +79,9 @@ class MCTS():
 
         if s not in self.Ps:
             # leaf node
-            self.Ps[s], v = self.nnet.predict(canonicalBoard)
+            # self.Ps[s], v = self.nnet.predict(canonicalBoard)
+            self.nnet.send(canonicalBoard)
+            self.Ps[s], v = self.nnet.recv()
             valids = self.game.getValidMoves(canonicalBoard, 1)
             self.Ps[s] = self.Ps[s] * valids  # masking invalid moves
             sum_Ps_s = np.sum(self.Ps[s])
