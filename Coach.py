@@ -17,6 +17,8 @@ from time import time
 
 from checkers.pytorch.NNet import NNetWrapper as nn
 
+import socket
+
 log = logging.getLogger(__name__)
 fh = logging.FileHandler('temp/trainlog.txt')
 log.addHandler(fh)
@@ -189,13 +191,70 @@ class Coach():
     #     return
 
     @staticmethod
+    def remoteSendProcess(rsProcArgs):
+        """
+        
+        """
+        HOST = 'eelabg13.kaist.ac.kr'
+        PORT = 80
+        result_conn = rsProcArgs
+
+        # Create a socket object
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        server_socket.bind((HOST, PORT))
+        server_socket.listen()
+
+        # Return a new socket when a client connects
+        client_socket, addr = server_socket.accept()
+
+        # Address of connected client
+        print('Connected by', addr)
+
+        while True:
+            # 클라이언트가 보낸 메시지를 수신하기 위해 대기합니다. 
+            data = client_socket.recv(1024)
+
+            # 빈 문자열을 수신하면 루프를 중지합니다. 
+            if not data:
+                break
+
+            # 수신받은 문자열을 출력합니다.
+            print('Received from', addr, data.decode())
+
+            # 받은 문자열을 다시 클라이언트로 전송해줍니다.(에코) 
+            client_socket.sendall(data)
+
+        # 소켓을 닫습니다.
+        client_socket.close()
+        server_socket.close()
+
+
+    @staticmethod
     def remoteRecvProcess(rrProcArgs):
         """
         
         """
-        # log.info('nnProcess')
-        # game, state_dict, selfplay_pipes, kill_pipe = nnProcArgs
+        HOST = 'eelabg13.kaist.ac.kr'
+        PORT = 80
         result_conn = rrProcArgs
+
+        # Create a socket object
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # Connect to the server
+        client_socket.connect((HOST, PORT))
+
+        # Send a message
+        client_socket.sendall('Hi'.encode())
+
+        # Receive a message
+        data = client_socket.recv(1024)
+        print('Received', repr(data.decode()))
+
+        # Close the socket
+        client_socket.close()
 
 
     def learn(self):
@@ -219,7 +278,7 @@ class Coach():
 
         # Create the server-communicating process
         remoteconn, remoteconn1 = mp.Pipe()
-        rrProc = mp.Process(target=Coach.remoteRecvProcess, args=(remoteconn1, ))
+        rrProc = mp.Process(target=Coach.remoteSendProcess if self.args.remote_send else Coach.remoteRecvProcess, args=(remoteconn1, ))
         nnProc.daemon = True
         nnProc.start()
 
