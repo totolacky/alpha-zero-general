@@ -6,6 +6,8 @@ import numpy as np
 EPS = 1e-8
 
 log = logging.getLogger(__name__)
+fh = logging.FileHandler('temp/trainlog.txt')
+log.addHandler(fh)
 
 
 class MCTS():
@@ -13,10 +15,15 @@ class MCTS():
     This class handles the MCTS tree.
     """
 
-    def __init__(self, game, nnet, args):
+    def __init__(self, game, nnet, args, multiprocessing = False, pipeSend = None, pipeRecv = None):
         self.game = game
-        self.nnet = nnet    # pipe connection, not nnet itself
+        self.nnet = nnet    # queue/pipe connection, not nnet itself
         self.args = args
+        self.multiprocessing = multiprocessing
+        if multiprocessing:
+            self.pipeSend = pipeSend
+            self.pipeRecv = pipeRecv
+
         self.Qsa = {}  # stores Q values for s,a (as defined in the paper)
         self.Nsa = {}  # stores #times edge s,a was visited
         self.Ns = {}  # stores #times board s was visited
@@ -79,9 +86,15 @@ class MCTS():
 
         if s not in self.Ps:
             # leaf node
-            # self.Ps[s], v = self.nnet.predict(canonicalBoard)
-            self.nnet.send(canonicalBoard)
-            self.Ps[s], v = self.nnet.recv()
+            if self.multiprocessing:
+                # self.nnet.send(canonicalBoard)
+                # log.info("[search] Block")
+                # self.Ps[s], v = self.nnet.recv()
+                # log.info("[search] Unblock")
+                self.nnet.put((canonicalBoard, self.pipeSend))
+                self.Ps[s], v = self.pipeRecv.recv()
+            else:
+                self.Ps[s], v = self.nnet.predict(canonicalBoard)
             valids = self.game.getValidMoves(canonicalBoard, 1)
             self.Ps[s] = self.Ps[s] * valids  # masking invalid moves
             sum_Ps_s = np.sum(self.Ps[s])

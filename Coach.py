@@ -13,18 +13,21 @@ from MCTS import MCTS
 
 import torch.multiprocessing as mp
 from torch.multiprocessing import Pool
+from time import time
 
 from checkers.pytorch.NNet import NNetWrapper as nn
 
 log = logging.getLogger(__name__)
+fh = logging.FileHandler('temp/trainlog.txt')
+log.addHandler(fh)
 
-class NoDaemonProcess(mp.Process):
-    # make 'daemon' attribute always return False
-    def _get_daemon(self):
-        return False
-    def _set_daemon(self, value):
-        pass
-    daemon = property(_get_daemon, _set_daemon)
+# class NoDaemonProcess(mp.Process):
+#     # make 'daemon' attribute always return False
+#     def _get_daemon(self):
+#         return False
+#     def _set_daemon(self, value):
+#         pass
+#     daemon = property(_get_daemon, _set_daemon)
 
 # We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
 # because the latter is only a wrapper function, not a proper class.
@@ -45,6 +48,7 @@ class Coach():
         # self.mcts = MCTS(self.game, self.nnet, self.args)
         self.trainExamplesHistory = []  # history of examples from args.numItersForTrainExamplesHistory latest iterations
         self.skipFirstSelfPlay = False  # can be overriden in loadTrainExamples()
+        self.selfPlaysPlayed = 0
 
     @staticmethod
     def executeEpisode(eeArgs):
@@ -63,14 +67,19 @@ class Coach():
                            pi is the MCTS informed policy vector, v is +1 if
                            the player eventually won the game, else -1.
         """
-        game, args, pipe_conn = eeArgs
+        # log.info('executeEpisode')
+        # game, args, pipe_conn = eeArgs
+        game, args, sharedQ = eeArgs
 
         trainExamples = []
         board = game.getInitBoard()
         curPlayer = 1
         episodeStep = 0
 
-        mcts = MCTS(game, pipe_conn, args)   # MCTS takes a pipe connection instead of nnet
+        pipeSend, pipeRecv = mp.Pipe()
+
+        # mcts = MCTS(game, pipe_conn, args, True)   # MCTS takes a pipe connection instead of nnet
+        mcts = MCTS(game, sharedQ, args, True, pipeSend, pipeRecv)   # MCTS takes a shared queue instead of nnet
         # mcts = MCTS(game, nnet, args)
 
         while True:
@@ -90,6 +99,7 @@ class Coach():
             r = game.getGameEnded(board, curPlayer)
 
             if r != 0:
+                # log.info(str(len(trainExamples))+" examples generated")
                 return [(x[0], x[2], r * ((-1) ** (x[1] != curPlayer))) for x in trainExamples]
     
     @staticmethod
@@ -97,67 +107,96 @@ class Coach():
         """
         
         """
-        game, state_dict, selfplay_pipes, kill_pipe = nnProcArgs
+        # log.info('nnProcess')
+        # game, state_dict, selfplay_pipes, kill_pipe = nnProcArgs
+        game, state_dict, sharedQ = nnProcArgs
 
         nnet = nn(game, state_dict)
 
         while True:
-            # Check for incoming queries from all pipes
-            for conn in selfplay_pipes:
-                # If there are some, take care of them
-                if (conn.poll()):
-                    canonicalBoard = conn.recv()
-                    s, v = nnet.predict(canonicalBoard)
-                    conn.send((s, v))
-
-            # Check for kill signal, through kill_pipe
-            if (kill_pipe.poll()):
-                assert kill_pipe.recv() == True
+            req = sharedQ.get()
+            if req == None:
                 return
+            else:
+                canonicalBoard, pipe = req
+                s, v = nnet.predict(canonicalBoard)
+                pipe.send((s, v))
 
+            # # Check for incoming queries from all pipes
+            # for conn in selfplay_pipes:
+            #     # If there are some, take care of them
+            #     if (conn.poll()):
+            #         log.info("[nnProcess] Block 1")
+            #         canonicalBoard = conn.recv()
+            #         log.info("[nnProcess] Unblock 1")
+            #         s, v = nnet.predict(canonicalBoard)
+            #         conn.send((s, v))
+
+            # # Check for kill signal, through kill_pipe
+            # if (kill_pipe.poll()):
+            #     log.info("[nnProcess] Block 2")
+            #     assert kill_pipe.recv() == True
+            #     log.info("[nnProcess] Unlock 2")
+            #     return
+
+    # @staticmethod
+    # def parallelExecute(peArgs):
+    #     """
+        
+    #     """
+    #     game, args, state_dict, q = peArgs
+    #     numEps = args.numEps
+    #     num_selfplay_procs = args.num_selfplay_procs
+
+    #     res = []
+
+    #     # Create self-play processes (with pool)
+    #     p = Pool(num_selfplay_procs)
+
+    #     # Create pipes
+    #     nnC1, nnC2 = mp.Pipe()  # pipes for killing nnProcess
+    #     pipes = []  # pipes for nnProcess
+    #     pArgs = []  # pool args (with pipes for selfplayProcess)
+
+    #     for j in range(num_selfplay_procs):
+    #         c1, c2 = mp.Pipe()
+    #         pipes.append(c1)
+    #         pArgs.append((game, args, c2))
+
+    #     # Create the NN process
+    #     nnProc = mp.Process(target=Coach.nnProcess, args=[(game, state_dict, pipes, nnC2)])
+    #     nnProc.daemon = True
+    #     nnProc.start()
+
+    #     for i in range(int(numEps / num_selfplay_procs)):
+    #         starttime = time()
+            
+    #         # Execute self-play and append the results to res
+    #         for d in p.map(Coach.executeEpisode, pArgs):
+    #             res += d
+            
+    #         endtime = time()
+    #         print("Executed "+str(num_selfplay_procs)+" self-play episodes in "+str(endtime-starttime)+" secconds. (AVG "+str((endtime-starttime)/num_selfplay_procs)+" secs./game)")
+
+    #     # Kill the NN process
+    #     nnC1.send(True)
+    #     nnProc.join()
+
+    #     p.close()
+
+    #     # Return res
+    #     q.put(res)
+    #     return
 
     @staticmethod
-    def parallelExecute(peArgs):
+    def remoteRecvProcess(rrProcArgs):
         """
         
         """
-        game, args, state_dict, q = peArgs
-        numEps = args.numEps
-        num_selfplay_procs = args.num_selfplay_procs
+        # log.info('nnProcess')
+        # game, state_dict, selfplay_pipes, kill_pipe = nnProcArgs
+        result_conn = rrProcArgs
 
-        res = []
-
-        for i in range(int(numEps / num_selfplay_procs)):
-            # Create pipes
-            nnC1, nnC2 = mp.Pipe()  # pipes for killing nnProcess
-            pipes = []  # pipes for nnProcess
-            pArgs = []  # pool args (with pipes for selfplayProcess)
-
-            for j in range(num_selfplay_procs):
-                c1, c2 = mp.Pipe()
-                pipes.append(c1)
-                pArgs.append((game, args, c2))
-
-            # Create the NN process
-            nnProc = mp.Process(target=Coach.nnProcess, args=[(game, state_dict, pipes, nnC2)])
-            nnProc.daemon = True
-            nnProc.start()
-
-            # Create self-play processes (with pool)
-            p = Pool(num_selfplay_procs)
-
-            # Join and append the results to res
-            for d in tqdm(p.map(Coach.executeEpisode, pArgs), total=len(pArgs)):
-                res += d
-            p.close()
-
-            # Kill the NN process
-            nnC1.send(True)
-            nnProc.join()
-
-        # Return res
-        q.put(res)
-        return
 
     def learn(self):
         """
@@ -167,37 +206,92 @@ class Coach():
         It then pits the new neural network against the old one and accepts it
         only if it wins >= updateThreshold fraction of games.
         """
+        # Assert that num_selfplay_procs is a multiple of num_gpu_procs
+        # assert int(self.args.num_selfplay_procs/self.args.num_gpu_procs) == self.args.num_selfplay_procs/self.args.num_gpu_procs
 
+        try:
+            mp.set_start_method('spawn')
+        except RuntimeError:
+            pass
+
+        manager = mp.Manager()
+        sharedQ = manager.Queue()
+
+        # Create the server-communicating process
+        remoteconn, remoteconn1 = mp.Pipe()
+        rrProc = mp.Process(target=Coach.remoteRecvProcess, args=(remoteconn1, ))
+        nnProc.daemon = True
+        nnProc.start()
+
+        # Generate self-plays and train
         for i in range(1, self.args.numIters + 1):
+            # Create num_gpu_procs nnProcess
+            nnProcs = []
+            # nnPipes = []    # pipes to kill nnProc
+            # spPipes = []    # Self-play pipes
+            for j in range(self.args.num_gpu_procs):
+                # # Create pipes for nnProc j
+                # pipes = []
+                # for k in range(int(self.args.num_selfplay_procs/self.args.num_gpu_procs)):
+                #     c1, c2 = mp.Pipe()
+                #     pipes.append(c1)
+                #     spPipes.append(c2)
+                
+                # # Create pipes to kill nnProc
+                # k1, k2 = mp.Pipe()
+                # nnPipes.append(k1)
+
+                # Run nnProc
+                state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}
+                # nnProc = mp.Process(target=Coach.nnProcess, args=[(self.game, state_dict, pipes, k2)])
+                nnProc = mp.Process(target=Coach.nnProcess, args=[(self.game, state_dict, sharedQ)])
+                nnProc.daemon = True
+                nnProc.start()
+                nnProcs.append(nnProc)
+
+            # Create self-play process pool
+            # selfplayPool = Pool(self.args.num_selfplay_procs)
+            selfplayPool = Pool(None)
+
+            # Create pool args
+            pArgs = []
+            # for j in range(self.args.num_selfplay_procs):
+            for j in range(self.args.numEps):
+                # pArgs.append((self.game, self.args, spPipes[j]))
+                pArgs.append((self.game, self.args, sharedQ))
+
             # bookkeeping
             log.info(f'Starting Iter #{i} ...')
             # examples of the iteration
             if not self.skipFirstSelfPlay or i > 1:
                 iterationTrainExamples = deque([], maxlen=self.args.maxlenOfQueue)
 
-                try:
-                    mp.set_start_method('spawn')
-                except RuntimeError:
-                    pass
+                log.info('Start generating self-plays')
 
-                procArg = []
-                q = mp.Queue()
-                state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}
-
-                procs = []
-                for j in range(self.args.num_gpu_procs):
-                    p = mp.Process(target = self.parallelExecute, args=((self.game, self.args, state_dict, q),))
-                    p.start()
-                    procs.append(p)
+                with tqdm(total = self.args.numEps) as pbar:
+                    for d in tqdm(selfplayPool.imap_unordered(Coach.executeEpisode, pArgs)):
+                        iterationTrainExamples += d
+                        pbar.update()
                 
-                for p in procs:
-                    p.join()
+                self.selfPlaysPlayed += self.args.numEps
 
-                for j in range(self.args.num_gpu_procs):
-                    iterationTrainExamples += q.get()
+                # for t in tqdm(range(int(self.args.numEps / self.args.num_selfplay_procs))):
+                #     for d in selfplayPool.map(Coach.executeEpisode, pArgs):
+                #         iterationTrainExamples += d
 
                 # save the iteration examples to the history 
                 self.trainExamplesHistory.append(iterationTrainExamples)
+
+            # Kill the NN processes
+            for j in range(self.args.num_gpu_procs):
+                # nnPipes[j].send(True)
+                sharedQ.put(None)
+
+            for j in range(self.args.num_gpu_procs):
+                nnProcs[j].join()
+            
+            # Close the process pool
+            selfplayPool.close()
 
             if len(self.trainExamplesHistory) > self.args.numItersForTrainExamplesHistory:
                 log.warning(
