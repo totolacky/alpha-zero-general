@@ -30,7 +30,7 @@ args = dotdict({
     'load_folder_file': ('./temp/','checkpoint_60.pth.tar'),
     'numItersForTrainExamplesHistory': 100,
 
-    'num_gpu_procs': 3,
+    'num_gpu_procs': 8,
     'remote_send': False
 })
 

@@ -26,12 +26,13 @@ args = dotdict({
 
 
 class NNetWrapper(NeuralNet):
-    def __init__(self, game, state_dict):
+    def __init__(self, game, state_dict, gpu_num = 0):
         self.nnet = chnet(game, args)
         self.board_x, self.board_y = game.getBoardSize()
         self.action_size = game.getActionSize()
 
         if args.cuda:
+            torch.cuda.set_device(torch.device(f'cuda:{gpu_num}'))
             self.nnet.cuda()
 
         if state_dict != None:
@@ -89,7 +90,8 @@ class NNetWrapper(NeuralNet):
         # preparing input
         board = CheckersGame.encodeBoard(board)
         board = torch.FloatTensor(board.astype(np.float64))
-        if args.cuda: board = board.contiguous().cuda()
+        if args.cuda: 
+            board = board.contiguous().cuda()
         board = board.view(5, self.board_x, self.board_y)
         self.nnet.eval()
         with torch.no_grad():

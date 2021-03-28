@@ -13,6 +13,7 @@ from MCTS import MCTS
 
 import torch.multiprocessing as mp
 from torch.multiprocessing import Pool
+import torch
 from time import time
 
 from checkers.pytorch.NNet import NNetWrapper as nn
@@ -111,9 +112,9 @@ class Coach():
         """
         # log.info('nnProcess')
         # game, state_dict, selfplay_pipes, kill_pipe = nnProcArgs
-        game, state_dict, sharedQ = nnProcArgs
+        game, state_dict, sharedQ, gpu_num = nnProcArgs
 
-        nnet = nn(game, state_dict)
+        nnet = nn(game, state_dict, gpu_num)
 
         while True:
             req = sharedQ.get()
@@ -200,7 +201,7 @@ class Coach():
         result_conn = rsProcArgs
 
         # Create a socket object
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         server_socket.bind((HOST, PORT))
@@ -265,9 +266,6 @@ class Coach():
         It then pits the new neural network against the old one and accepts it
         only if it wins >= updateThreshold fraction of games.
         """
-        # Assert that num_selfplay_procs is a multiple of num_gpu_procs
-        # assert int(self.args.num_selfplay_procs/self.args.num_gpu_procs) == self.args.num_selfplay_procs/self.args.num_gpu_procs
-
         try:
             mp.set_start_method('spawn')
         except RuntimeError:
@@ -279,31 +277,17 @@ class Coach():
         # Create the server-communicating process
         remoteconn, remoteconn1 = mp.Pipe()
         rrProc = mp.Process(target=Coach.remoteSendProcess if self.args.remote_send else Coach.remoteRecvProcess, args=(remoteconn1, ))
-        nnProc.daemon = True
-        nnProc.start()
+        rrProc.daemon = True
+        rrProc.start()
 
         # Generate self-plays and train
         for i in range(1, self.args.numIters + 1):
             # Create num_gpu_procs nnProcess
             nnProcs = []
-            # nnPipes = []    # pipes to kill nnProc
-            # spPipes = []    # Self-play pipes
             for j in range(self.args.num_gpu_procs):
-                # # Create pipes for nnProc j
-                # pipes = []
-                # for k in range(int(self.args.num_selfplay_procs/self.args.num_gpu_procs)):
-                #     c1, c2 = mp.Pipe()
-                #     pipes.append(c1)
-                #     spPipes.append(c2)
-                
-                # # Create pipes to kill nnProc
-                # k1, k2 = mp.Pipe()
-                # nnPipes.append(k1)
-
                 # Run nnProc
                 state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}
-                # nnProc = mp.Process(target=Coach.nnProcess, args=[(self.game, state_dict, pipes, k2)])
-                nnProc = mp.Process(target=Coach.nnProcess, args=[(self.game, state_dict, sharedQ)])
+                nnProc = mp.Process(target=Coach.nnProcess, args=[(self.game, state_dict, sharedQ, j%torch.cuda.device_count())])
                 nnProc.daemon = True
                 nnProc.start()
                 nnProcs.append(nnProc)
