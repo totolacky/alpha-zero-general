@@ -135,6 +135,7 @@ class Coach():
 
             # Send the data through socket
             client_socket.sendall(pickle.dumps(data))
+            client_socket.sendall("This is the end of a pickled data.".encode())
 
             # Check if any state_dict arrived through the socket
             try:
@@ -142,7 +143,9 @@ class Coach():
                 data = []
                 while True:
                     packet = client_socket.recv(4096)
-                    if not packet: break
+                    if packet[-34:]=="This is the end of a pickled data.".encode(): 
+                        data.append(packet[:-34])
+                        break
                     data.append(packet)
                 state_dict = pickle.loads(b"".join(data))
                 SDQ.put(state_dict)
@@ -185,8 +188,8 @@ class Coach():
                 packet = client_socket.recv(4096)
                 # log.info('Received something: '+str(packet))
                 # log.info('Msg: '+str(packet[-36:])+', is it the end? '+str())
-                if packet[-36:]=="This is the end of a self-play data.".encode(): 
-                    data.append(packet[:-36])
+                if packet[-34:]=="This is the end of a pickled data.".encode(): 
+                    data.append(packet[:-34])
                     break
                 data.append(packet)
             # data = client_socket.recv(52428800)
@@ -210,6 +213,7 @@ class Coach():
             #     while result_conn.poll():
             #         sd = result_conn.recv()
                 client_socket.send(pickle.dumps(sd))
+                client_socket.send("This is the end of a pickled data.".encode())
 
         # Close the socket
         client_socket.close()
