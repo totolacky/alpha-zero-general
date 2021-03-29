@@ -2,6 +2,7 @@ import logging
 import math
 
 import numpy as np
+import torch.multiprocessing as mp
 
 EPS = 1e-8
 
@@ -15,12 +16,13 @@ class MCTS():
     This class handles the MCTS tree.
     """
 
-    def __init__(self, game, nnet, args, multiprocessing = False, pipeSend = None, pipeRecv = None):
+    def __init__(self, game, nnet, args, multiprocessing = False):
         self.game = game
         self.nnet = nnet    # queue/pipe connection, not nnet itself
         self.args = args
         self.multiprocessing = multiprocessing
         if multiprocessing:
+            pipeSend, pipeRecv = mp.Pipe()
             self.pipeSend = pipeSend
             self.pipeRecv = pipeRecv
 

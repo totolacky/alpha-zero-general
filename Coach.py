@@ -18,24 +18,11 @@ from time import time
 
 from checkers.pytorch.NNet import NNetWrapper as nn
 
-import socket
+import socket, pickle
 
 log = logging.getLogger(__name__)
 fh = logging.FileHandler('temp/trainlog.txt')
 log.addHandler(fh)
-
-# class NoDaemonProcess(mp.Process):
-#     # make 'daemon' attribute always return False
-#     def _get_daemon(self):
-#         return False
-#     def _set_daemon(self, value):
-#         pass
-#     daemon = property(_get_daemon, _set_daemon)
-
-# We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
-# because the latter is only a wrapper function, not a proper class.
-# class NDPool(Pool):
-#     Process = NoDaemonProcess
 
 class Coach():
     """
@@ -46,9 +33,7 @@ class Coach():
     def __init__(self, game, nnet, args):
         self.game = game
         self.nnet = nnet
-        # self.pnet = self.nnet.__class__(self.game)  # the competitor network
         self.args = args
-        # self.mcts = MCTS(self.game, self.nnet, self.args)
         self.trainExamplesHistory = []  # history of examples from args.numItersForTrainExamplesHistory latest iterations
         self.skipFirstSelfPlay = False  # can be overriden in loadTrainExamples()
         self.selfPlaysPlayed = 0
@@ -70,8 +55,6 @@ class Coach():
                            pi is the MCTS informed policy vector, v is +1 if
                            the player eventually won the game, else -1.
         """
-        # log.info('executeEpisode')
-        # game, args, pipe_conn = eeArgs
         game, args, sharedQ = eeArgs
 
         trainExamples = []
@@ -79,11 +62,7 @@ class Coach():
         curPlayer = 1
         episodeStep = 0
 
-        pipeSend, pipeRecv = mp.Pipe()
-
-        # mcts = MCTS(game, pipe_conn, args, True)   # MCTS takes a pipe connection instead of nnet
-        mcts = MCTS(game, sharedQ, args, True, pipeSend, pipeRecv)   # MCTS takes a shared queue instead of nnet
-        # mcts = MCTS(game, nnet, args)
+        mcts = MCTS(game, sharedQ, args, True)   # MCTS takes a shared queue instead of nnet
 
         while True:
             episodeStep += 1
@@ -102,7 +81,6 @@ class Coach():
             r = game.getGameEnded(board, curPlayer)
 
             if r != 0:
-                # log.info(str(len(trainExamples))+" examples generated")
                 return [(x[0], x[2], r * ((-1) ** (x[1] != curPlayer))) for x in trainExamples]
     
     @staticmethod
@@ -110,10 +88,7 @@ class Coach():
         """
         
         """
-        # log.info('nnProcess')
-        # game, state_dict, selfplay_pipes, kill_pipe = nnProcArgs
         game, state_dict, sharedQ, gpu_num = nnProcArgs
-
         nnet = nn(game, state_dict, gpu_num)
 
         while True:
@@ -125,79 +100,13 @@ class Coach():
                 s, v = nnet.predict(canonicalBoard)
                 pipe.send((s, v))
 
-            # # Check for incoming queries from all pipes
-            # for conn in selfplay_pipes:
-            #     # If there are some, take care of them
-            #     if (conn.poll()):
-            #         log.info("[nnProcess] Block 1")
-            #         canonicalBoard = conn.recv()
-            #         log.info("[nnProcess] Unblock 1")
-            #         s, v = nnet.predict(canonicalBoard)
-            #         conn.send((s, v))
-
-            # # Check for kill signal, through kill_pipe
-            # if (kill_pipe.poll()):
-            #     log.info("[nnProcess] Block 2")
-            #     assert kill_pipe.recv() == True
-            #     log.info("[nnProcess] Unlock 2")
-            #     return
-
-    # @staticmethod
-    # def parallelExecute(peArgs):
-    #     """
-        
-    #     """
-    #     game, args, state_dict, q = peArgs
-    #     numEps = args.numEps
-    #     num_selfplay_procs = args.num_selfplay_procs
-
-    #     res = []
-
-    #     # Create self-play processes (with pool)
-    #     p = Pool(num_selfplay_procs)
-
-    #     # Create pipes
-    #     nnC1, nnC2 = mp.Pipe()  # pipes for killing nnProcess
-    #     pipes = []  # pipes for nnProcess
-    #     pArgs = []  # pool args (with pipes for selfplayProcess)
-
-    #     for j in range(num_selfplay_procs):
-    #         c1, c2 = mp.Pipe()
-    #         pipes.append(c1)
-    #         pArgs.append((game, args, c2))
-
-    #     # Create the NN process
-    #     nnProc = mp.Process(target=Coach.nnProcess, args=[(game, state_dict, pipes, nnC2)])
-    #     nnProc.daemon = True
-    #     nnProc.start()
-
-    #     for i in range(int(numEps / num_selfplay_procs)):
-    #         starttime = time()
-            
-    #         # Execute self-play and append the results to res
-    #         for d in p.map(Coach.executeEpisode, pArgs):
-    #             res += d
-            
-    #         endtime = time()
-    #         print("Executed "+str(num_selfplay_procs)+" self-play episodes in "+str(endtime-starttime)+" secconds. (AVG "+str((endtime-starttime)/num_selfplay_procs)+" secs./game)")
-
-    #     # Kill the NN process
-    #     nnC1.send(True)
-    #     nnProc.join()
-
-    #     p.close()
-
-    #     # Return res
-    #     q.put(res)
-    #     return
-
     @staticmethod
     def remoteSendProcess(rsProcArgs):
         """
         
         """
         HOST = 'eelabg13.kaist.ac.kr'
-        PORT = 80
+        PORT = 8080
         result_conn = rsProcArgs
 
         # Create a socket object
@@ -211,23 +120,29 @@ class Coach():
         client_socket, addr = server_socket.accept()
 
         # Address of connected client
-        print('Connected by', addr)
+        log.info('Socket connected by', addr)
+
+        # Set socket timeout
+        client_socket.settimeout(1.0)
 
         while True:
-            # 클라이언트가 보낸 메시지를 수신하기 위해 대기합니다. 
-            data = client_socket.recv(1024)
+            # Receive a generated data
+            data = result_conn.recv()
 
-            # 빈 문자열을 수신하면 루프를 중지합니다. 
-            if not data:
-                break
+            # Send the data through socket
+            client_socket.sendall(pickle.dumps(data))
 
-            # 수신받은 문자열을 출력합니다.
-            print('Received from', addr, data.decode())
+            # Check if any state_dict arrived through the socket
+            try:
+                sd = client_socket.recv()
+            except socket.timeout:
+                continue
+            
+            # If a state_dict arrived, pass it on to the main thread
+            state_dict = pickle.loads(sd)
+            result_conn.send(state_dict)
 
-            # 받은 문자열을 다시 클라이언트로 전송해줍니다.(에코) 
-            client_socket.sendall(data)
-
-        # 소켓을 닫습니다.
+        # Close the socket
         client_socket.close()
         server_socket.close()
 
@@ -238,7 +153,7 @@ class Coach():
         
         """
         HOST = 'eelabg13.kaist.ac.kr'
-        PORT = 80
+        PORT = 8080
         result_conn = rrProcArgs
 
         # Create a socket object
@@ -247,16 +162,24 @@ class Coach():
         # Connect to the server
         client_socket.connect((HOST, PORT))
 
-        # Send a message
-        client_socket.sendall('Hi'.encode())
+        while True:
+            # Receive a data
+            data = client_socket.recv()
+            data = pickle.loads(data)
 
-        # Receive a message
-        data = client_socket.recv(1024)
-        print('Received', repr(data.decode()))
+            # Send the data over the pipe
+            result_conn.send(data)
+
+            # Check if any state_dict arrived, and send it over the socket
+            if result_conn.poll():
+                sd = result_conn.recv()
+                # If more than 2 state_dicts are waiting, then send the most recent one
+                while result_conn.poll():
+                    sd = result_conn.recv()
+                client_socket.send(pickle.dumps(sd))
 
         # Close the socket
         client_socket.close()
-
 
     def learn(self):
         """
@@ -282,6 +205,15 @@ class Coach():
 
         # Generate self-plays and train
         for i in range(1, self.args.numIters + 1):
+            # If remote_send (i.e. Haedong server), update state_dict
+            if self.args.remote_send:
+                if remoteconn.poll():
+                    sd = remoteconn.recv()
+                    while remoteconn.poll():
+                        sd = remoteconn.recv()
+                    self.nnet.nnet.load_state_dict(sd)
+                    log.info("Updated state_dict")
+
             # Create num_gpu_procs nnProcess
             nnProcs = []
             for j in range(self.args.num_gpu_procs):
@@ -293,14 +225,11 @@ class Coach():
                 nnProcs.append(nnProc)
 
             # Create self-play process pool
-            # selfplayPool = Pool(self.args.num_selfplay_procs)
             selfplayPool = Pool(None)
 
             # Create pool args
             pArgs = []
-            # for j in range(self.args.num_selfplay_procs):
             for j in range(self.args.numEps):
-                # pArgs.append((self.game, self.args, spPipes[j]))
                 pArgs.append((self.game, self.args, sharedQ))
 
             # bookkeeping
@@ -313,33 +242,47 @@ class Coach():
 
                 with tqdm(total = self.args.numEps) as pbar:
                     for d in tqdm(selfplayPool.imap_unordered(Coach.executeEpisode, pArgs)):
-                        iterationTrainExamples += d
+                        if self.args.remote_send:
+                            remoteconn.send(d)
+                        else:
+                            iterationTrainExamples += d
                         pbar.update()
                 
                 self.selfPlaysPlayed += self.args.numEps
 
-                # for t in tqdm(range(int(self.args.numEps / self.args.num_selfplay_procs))):
-                #     for d in selfplayPool.map(Coach.executeEpisode, pArgs):
-                #         iterationTrainExamples += d
-
                 # save the iteration examples to the history 
                 self.trainExamplesHistory.append(iterationTrainExamples)
 
+            # Close the process pool
+            selfplayPool.close()
+
             # Kill the NN processes
             for j in range(self.args.num_gpu_procs):
-                # nnPipes[j].send(True)
                 sharedQ.put(None)
 
             for j in range(self.args.num_gpu_procs):
                 nnProcs[j].join()
-            
-            # Close the process pool
-            selfplayPool.close()
 
+            # If the process is remote_send (i.e. the Haedong server), then skip the training part
+            if self.args.remote_send:
+                continue
+            
+            # Otherwise, add the server-generated examples to the iterationTrainExamples
+            num_remote_selfplays = 0
+            while remoteconn.poll():
+                d = remoteconn.recv()
+                iterationTrainExamples += d
+                num_remote_selfplays += 1
+            
+            log.info(f'{num_remote_selfplays} self-play data loaded from remote server')
+            self.selfPlaysPlayed += num_remote_selfplays
+
+            # Update the trainExamplesHistory
             if len(self.trainExamplesHistory) > self.args.numItersForTrainExamplesHistory:
                 log.warning(
                     f"Removing the oldest entry in trainExamples. len(trainExamplesHistory) = {len(self.trainExamplesHistory)}")
                 self.trainExamplesHistory.pop(0)
+
             # backup history to a file
             # NB! the examples were collected using the model from the previous iteration, so (i-1)  
             self.saveTrainExamples(i - 1)
@@ -352,7 +295,11 @@ class Coach():
 
             log.info('TRAINING AND SAVING NEW MODEL')
             self.nnet.train(trainExamples)
-            self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(i))
+            self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(self.selfPlaysPlayed))
+
+            # Send the new state_dict
+            state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}
+            remoteconn.send(state_dict)
 
     def getCheckpointFile(self, iteration):
         return 'checkpoint_' + str(iteration) + '.pth.tar'
