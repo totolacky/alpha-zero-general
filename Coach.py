@@ -107,7 +107,8 @@ class Coach():
         """
         HOST = 'eelabg13.kaist.ac.kr'
         PORT = 8080
-        result_conn = rsProcArgs
+        # result_conn = rsProcArgs
+        dataQ, SDQ = rsProcArgs
 
         # Create a socket object
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -116,31 +117,43 @@ class Coach():
         server_socket.bind((HOST, PORT))
         server_socket.listen()
 
+        log.info('Socket started listening on port '+str(PORT))
+
         # Return a new socket when a client connects
         client_socket, addr = server_socket.accept()
 
         # Address of connected client
-        log.info('Socket connected by', addr)
+        log.info('Socket connected by'+str(addr))
 
         # Set socket timeout
         client_socket.settimeout(1.0)
 
         while True:
             # Receive a generated data
-            data = result_conn.recv()
+            # data = result_conn.recv()
+            data = dataQ.get()
 
             # Send the data through socket
             client_socket.sendall(pickle.dumps(data))
 
             # Check if any state_dict arrived through the socket
             try:
-                sd = client_socket.recv()
+                # sd = client_socket.recv(52428800)
+                data = []
+                while True:
+                    packet = client_socket.recv(4096)
+                    if not packet: break
+                    data.append(packet)
+                state_dict = pickle.loads(b"".join(data))
+                SDQ.put(state_dict)
+                # result_conn.send(state_dict)
+
             except socket.timeout:
                 continue
             
-            # If a state_dict arrived, pass it on to the main thread
-            state_dict = pickle.loads(sd)
-            result_conn.send(state_dict)
+            # # If a state_dict arrived, pass it on to the main thread
+            # state_dict = pickle.loads(sd)
+            # result_conn.send(state_dict)
 
         # Close the socket
         client_socket.close()
@@ -154,28 +167,48 @@ class Coach():
         """
         HOST = 'eelabg13.kaist.ac.kr'
         PORT = 8080
-        result_conn = rrProcArgs
+        # result_conn = rrProcArgs
+        dataQ, SDQ = rrProcArgs
 
         # Create a socket object
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # Connect to the server
         client_socket.connect((HOST, PORT))
+        log.info('Socket connected to host')
 
         while True:
+            log.info('Waiting to receive data')
             # Receive a data
-            data = client_socket.recv()
-            data = pickle.loads(data)
+            data = []
+            while True:
+                packet = client_socket.recv(4096)
+                # log.info('Received something: '+str(packet))
+                # log.info('Msg: '+str(packet[-36:])+', is it the end? '+str())
+                if packet[-36:]=="This is the end of a self-play data.".encode(): 
+                    data.append(packet[:-36])
+                    break
+                data.append(packet)
+            # data = client_socket.recv(52428800)
+            data = pickle.loads(b"".join(data))
+
+            log.info('Received data of length '+str(len(data)))
 
             # Send the data over the pipe
-            result_conn.send(data)
+            # result_conn.send(data)
+            dataQ.put(data)
 
             # Check if any state_dict arrived, and send it over the socket
-            if result_conn.poll():
-                sd = result_conn.recv()
-                # If more than 2 state_dicts are waiting, then send the most recent one
-                while result_conn.poll():
-                    sd = result_conn.recv()
+            log.info('Empty: '+str(SDQ.empty()))
+            if not SDQ.empty():
+                sd = SDQ.get()
+                while not SDQ.empty():
+                    sd = SDQ.get()
+            # if result_conn.poll():
+            #     sd = result_conn.recv()
+            #     # If more than 2 state_dicts are waiting, then send the most recent one
+            #     while result_conn.poll():
+            #         sd = result_conn.recv()
                 client_socket.send(pickle.dumps(sd))
 
         # Close the socket
@@ -198,8 +231,11 @@ class Coach():
         sharedQ = manager.Queue()
 
         # Create the server-communicating process
-        remoteconn, remoteconn1 = mp.Pipe()
-        rrProc = mp.Process(target=Coach.remoteSendProcess if self.args.remote_send else Coach.remoteRecvProcess, args=(remoteconn1, ))
+        # remoteconn, remoteconn1 = mp.Pipe()
+        remoteDataQ = manager.Queue()
+        remoteSDQ = manager.Queue()
+        # rrProc = mp.Process(target=Coach.remoteSendProcess if self.args.remote_send else Coach.remoteRecvProcess, args=(remoteconn1, ))
+        rrProc = mp.Process(target=Coach.remoteSendProcess if self.args.remote_send else Coach.remoteRecvProcess, args=((remoteDataQ, remoteSDQ),))
         rrProc.daemon = True
         rrProc.start()
 
@@ -207,12 +243,19 @@ class Coach():
         for i in range(1, self.args.numIters + 1):
             # If remote_send (i.e. Haedong server), update state_dict
             if self.args.remote_send:
-                if remoteconn.poll():
-                    sd = remoteconn.recv()
-                    while remoteconn.poll():
-                        sd = remoteconn.recv()
+                log.info("Checking for state_dict update")
+                if not remoteQ.empty():
+                    sd = remoteQ.get()
+                    while not remoteQ.empty():
+                        sd = remoteQ.get()
+                # if remoteconn.poll():
+                #     sd = remoteconn.recv()
+                #     while remoteconn.poll():
+                #         sd = remoteconn.recv()
                     self.nnet.nnet.load_state_dict(sd)
                     log.info("Updated state_dict")
+                else:
+                    log.info("No new state_dict available")
 
             # Create num_gpu_procs nnProcess
             nnProcs = []
@@ -243,7 +286,8 @@ class Coach():
                 with tqdm(total = self.args.numEps) as pbar:
                     for d in tqdm(selfplayPool.imap_unordered(Coach.executeEpisode, pArgs)):
                         if self.args.remote_send:
-                            remoteconn.send(d)
+                            remoteDataQ.put(d)
+                            # remoteconn.send(d)
                         else:
                             iterationTrainExamples += d
                         pbar.update()
@@ -269,8 +313,10 @@ class Coach():
             
             # Otherwise, add the server-generated examples to the iterationTrainExamples
             num_remote_selfplays = 0
-            while remoteconn.poll():
-                d = remoteconn.recv()
+            while not remoteDataQ.empty():
+                d = remoteDataQ.get()
+            # while remoteconn.poll():
+            #     d = remoteconn.recv()
                 iterationTrainExamples += d
                 num_remote_selfplays += 1
             
@@ -299,7 +345,8 @@ class Coach():
 
             # Send the new state_dict
             state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}
-            remoteconn.send(state_dict)
+            # remoteconn.send(state_dict)
+            remoteSDQ.put(state_dict)
 
     def getCheckpointFile(self, iteration):
         return 'checkpoint_' + str(iteration) + '.pth.tar'
