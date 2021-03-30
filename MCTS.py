@@ -22,9 +22,10 @@ class MCTS():
         self.args = args
         self.multiprocessing = multiprocessing
         if multiprocessing:
-            pipeSend, pipeRecv = mp.Pipe()
-            self.pipeSend = pipeSend
-            self.pipeRecv = pipeRecv
+            self.queue = mp.Manager().Queue()
+            # pipeSend, pipeRecv = mp.Pipe()
+            # self.pipeSend = pipeSend
+            # self.pipeRecv = pipeRecv
 
         self.Qsa = {}  # stores Q values for s,a (as defined in the paper)
         self.Nsa = {}  # stores #times edge s,a was visited
@@ -93,8 +94,10 @@ class MCTS():
                 # log.info("[search] Block")
                 # self.Ps[s], v = self.nnet.recv()
                 # log.info("[search] Unblock")
-                self.nnet.put((canonicalBoard, self.pipeSend))
-                self.Ps[s], v = self.pipeRecv.recv()
+                # self.nnet.put((canonicalBoard, self.pipeSend))
+                # self.Ps[s], v = self.pipeRecv.recv()
+                self.nnet.put((canonicalBoard, self.queue))
+                self.Ps[s], v = self.queue.get()
             else:
                 self.Ps[s], v = self.nnet.predict(canonicalBoard)
             valids = self.game.getValidMoves(canonicalBoard, 1)

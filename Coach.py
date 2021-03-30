@@ -97,9 +97,11 @@ class Coach():
             if req == None:
                 return
             else:
-                canonicalBoard, pipe = req
+                # canonicalBoard, pipe = req
+                canonicalBoard, q = req
                 s, v = nnet.predict(canonicalBoard)
-                pipe.send((s, v))
+                # pipe.send((s, v))
+                q.put((s,v))
 
     @staticmethod
     def remoteSendProcess(rsProcArgs):
@@ -171,17 +173,21 @@ class Coach():
         # Connect to the server
         client_socket.connect((HOST, PORT))
         log.info('Socket connected to host')
+        client_socket.settimeout (600)
 
         while True:
             # Receive a data
-            data = []
-            while True:
-                packet = client_socket.recv(4096)
-                if packet[-34:]=="This is the end of a pickled data.".encode(): 
-                    data.append(packet[:-34])
-                    break
-                data.append(packet)
-            data = pickle.loads(b"".join(data))
+            try:
+                data = []
+                while True:
+                    packet = client_socket.recv(4096)
+                    if packet[-34:]=="This is the end of a pickled data.".encode(): 
+                        data.append(packet[:-34])
+                        break
+                    data.append(packet)
+                data = pickle.loads(b"".join(data))
+            except socket.timeout:
+                pass
 
             # Send the data over the pipe
             dataQ.put(data)
@@ -307,7 +313,7 @@ class Coach():
 
             # backup history to a file
             # NB! the examples were collected using the model from the previous iteration, so (i-1)  
-            self.saveTrainExamples(i - 1)
+            self.saveTrainExamples(self.selfPlaysPlayed)
 
             # shuffle examples before training
             trainExamples = []

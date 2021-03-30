@@ -18,7 +18,7 @@ from ..CheckersGame import CheckersGame
 args = dotdict({
     'lr': 0.01,
     'dropout': 0.3,
-    'epochs': 5,
+    'epochs': 10,
     'batch_size': 256,
     'cuda': torch.cuda.is_available(),
     'num_channels': 512,
@@ -26,7 +26,7 @@ args = dotdict({
 
 
 class NNetWrapper(NeuralNet):
-    def __init__(self, game, state_dict, gpu_num = 0):
+    def __init__(self, game, state_dict = None, gpu_num = 0):
         self.nnet = chnet(game, args)
         self.board_x, self.board_y = game.getBoardSize()
         self.action_size = game.getActionSize()

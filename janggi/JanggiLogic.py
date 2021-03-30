@@ -15,13 +15,20 @@ from .JanggiConstants import *
 from collections import defaultdict
 
 class Board():
-    def __init__(self, c1, c2):
+    def __init__(self, c1, c2, empty = False, mode = 0):
         # Done
         "Set up initial board configuration."
         
         """
         board = (pieces, (han_pcs, cho_pcs, move_cnt, curr_player, han_score, cho_score), rep_dict)
         """
+        
+        # Create empty board (for optimization)
+        if empty:
+            self.pieces = None
+            self.rep_dict = None
+            self.b_params = None
+            return
 
         # Create the empty board state.
         self.pieces = [None]*CONFIG_T

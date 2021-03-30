@@ -96,7 +96,7 @@ class JanggiGame(Game):
         # if player takes action on board, return next (board,player)
         # action must be a valid move
 
-        b = Board(self.c1, self.c2)
+        b = Board(self.c1, self.c2, True)
         b.pieces = np.copy(board[0])
         b.b_params = np.copy(board[1])
         b.rep_dict = board[2].copy() # Current board will be added in execute_move()
@@ -119,7 +119,7 @@ class JanggiGame(Game):
         # return a fixed size binary vector
         valids = [0]*self.getActionSize()
 
-        b = Board(self.c1, self.c2)
+        b = Board(self.c1, self.c2, True)
         b.pieces = np.copy(board[0])
         b.b_params = np.copy(board[1])
         b.rep_dict = board[2].copy()
@@ -141,7 +141,7 @@ class JanggiGame(Game):
             Cho score (+-1) if game is over
         """
         # return 0 if not ended, 1 if player Cho won, -1 if player Cho lost
-        b = Board(self.c1, self.c2)
+        b = Board(self.c1, self.c2, True)
         b.pieces = np.copy(board[0])
         b.b_params = np.copy(board[1])
         b.rep_dict = board[2].copy()
@@ -173,7 +173,7 @@ class JanggiGame(Game):
         return np.array(canonical_board).tostring()
 
     def getScore(self, board):
-        b = Board(self.c1, self.c2)
+        b = Board(self.c1, self.c2, True)
         b.pieces = np.copy(board[0])
         b.b_params = np.copy(board[1])
         b.rep_dict = board[2].copy()

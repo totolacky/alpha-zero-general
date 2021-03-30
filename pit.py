@@ -60,9 +60,11 @@ gp_rate = []
 
 play_num = 20
 
-for i in range(6):
+checkpoints = [40, 100, 150, 202, 259, 310, 370, 430, 490, 560, 630, 708, 781, 860, 943, 1029, 1118]
+
+for i in checkpoints:
     n1 = NNet(g)
-    n1.load_checkpoint('./temp/','checkpoint_'+str(10*(i+1))+'.pth.tar')
+    n1.load_checkpoint('./temp/','checkpoint_'+str(i)+'.pth.tar')
     args1 = dotdict({'numMCTSSims': 80, 'cpuct':1.0})
     mcts1 = MCTS(g, n1, args1)
     p1 = lambda x: np.argmax(mcts1.getActionProb(x, temp=0))
@@ -70,8 +72,8 @@ for i in range(6):
     p2 = RandomPlayer(g).play
 
     arena = Arena.Arena(p1, p2, g, display=CheckersGame.display)
-    res = arena.playGames(play_num, verbose=True)
-    print('CP self-play x'+str(600 + 10*(i+1))+' vs RP: (Win/Lose/Draw) = '+str(res))
+    res = arena.playGames(play_num, verbose=False)
+    print('CP self-play x'+str(i)+' vs RP: (Win/Lose/Draw) = '+str(res))
     rp.append(res)
     rp_rate.append((res[0]+res[2]/2)/play_num*100)
 
@@ -79,7 +81,7 @@ for i in range(6):
 
     arena = Arena.Arena(p1, p2, g, display=CheckersGame.display)
     res = arena.playGames(play_num, verbose=False)
-    print('CP self-play x'+str(600 + 10*(i+1))+' vs GP: (Win/Lose/Draw) = '+str(res))
+    print('CP self-play x'+str(i)+' vs GP: (Win/Lose/Draw) = '+str(res))
     gp.append(res)
     gp_rate.append((res[0]+res[2]/2)/play_num*100)
 

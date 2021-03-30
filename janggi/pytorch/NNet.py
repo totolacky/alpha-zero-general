@@ -15,30 +15,34 @@ import torch.optim as optim
 from .JanggiNNet import JanggiNNet as jnnet
 
 args = dotdict({
-    'lr': 0.1,
+    'lr': 0.01,
     'dropout': 0.3,
     'epochs': 10,
-    'batch_size': 64,
+    'batch_size': 256,
     'cuda': torch.cuda.is_available(),
-    'num_channels': 256,
+    'num_channels': 512,
 })
 
 
 class NNetWrapper(NeuralNet):
-    def __init__(self, game):
+    def __init__(self, game, state_dict = None, gpu_num = 0):
         self.nnet = jnnet(game, args)
         self.board_x, self.board_y = game.getBoardSize()
         self.state_stack = game.getStateSize()
         self.action_size = game.getActionSize()
 
         if args.cuda:
+            torch.cuda.set_device(torch.device(f'cuda:{gpu_num}'))
             self.nnet.cuda()
+
+        if state_dict != None:	
+            self.nnet.load_state_dict(state_dict)
 
     def train(self, examples):
         """
         examples: list of examples, each example is of form (board, pi, v)
         """
-        optimizer = optim.Adam(self.nnet.parameters())
+        optimizer = optim.Adam(self.nnet.parameters(), weight_decay = 1e-4)
 
         for epoch in range(args.epochs):
             print('EPOCH ::: ' + str(epoch + 1))
@@ -85,13 +89,13 @@ class NNetWrapper(NeuralNet):
 
         # preparing input
         board = torch.FloatTensor(board.astype(np.float64))
-        if args.cuda: board = board.contiguous().cuda()
+        if args.cuda:
+            board = board.contiguous().cuda()
         board = board.view(self.state_stack, self.board_x, self.board_y)
         self.nnet.eval()
         with torch.no_grad():
             pi, v = self.nnet(board)
 
-        # print('PREDICTION TIME TAKEN : {0:03f}'.format(time.time()-start))
         return torch.exp(pi).data.cpu().numpy()[0], v.data.cpu().numpy()[0]
 
     def loss_pi(self, targets, outputs):

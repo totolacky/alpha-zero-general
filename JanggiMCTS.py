@@ -3,6 +3,7 @@ import math
 
 import numpy as np
 from janggi.JanggiGame import JanggiGame
+import torch.multiprocessing as mp
 
 EPS = 1e-8
 
@@ -14,10 +15,14 @@ class JanggiMCTS():
     This class handles the MCTS tree.
     """
 
-    def __init__(self, game, nnet, args):
+    def __init__(self, game, nnet, args, multiprocessing = False, mctsQ = None, mctsQIdx = None):
         self.game = game
-        self.nnet = nnet
+        self.nnet = nnet    # queue/pipe connection, not nnet itself (if multiprocessing)
         self.args = args
+        self.multiprocessing = multiprocessing	
+        if multiprocessing:
+            self.queue = mctsQ
+            self.queueIdx = mctsQIdx
         self.Qsa = {}  # stores Q values for s,a (as defined in the paper)
         self.Nsa = {}  # stores #times edge s,a was visited
         self.Ns = {}  # stores #times board s was visited
@@ -34,8 +39,6 @@ class JanggiMCTS():
             probs: a policy vector where the probability of the ith action is
                    proportional to Nsa[(s,a)]**(1./temp)
         """
-        log.info("GetActionProb")
-
         for i in range(self.args.numMCTSSims):
             encodedBoard = JanggiGame.encodeBoard(board)
             self.search(board, encodedBoard)
@@ -83,7 +86,11 @@ class JanggiMCTS():
 
         if s not in self.Ps:
             # leaf node
-            self.Ps[s], v = self.nnet.predict(encodedBoard)
+            if self.multiprocessing:
+                self.nnet.put((encodedBoard, self.queueIdx))
+                self.Ps[s], v = self.queue.get()
+            else:
+                self.Ps[s], v = self.nnet.predict(encodedBoard)
             valids = self.game.getValidMoves(board)
             self.Ps[s] = self.Ps[s] * valids  # masking invalid moves
             sum_Ps_s = np.sum(self.Ps[s])
