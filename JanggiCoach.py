@@ -101,7 +101,7 @@ class JanggiCoach():
         """	
         	
         """	
-        HOST = 'eelabg13.kaist.ac.kr'	
+        HOST = 'eelabg13.kaist.ac.kr'
         PORT = 8080	
         dataQ, SDQ = rsProcArgs	
 
@@ -138,8 +138,8 @@ class JanggiCoach():
                         data.append(packet[:-34])	
                         break	
                     data.append(packet)	
-                state_dict = pickle.loads(b"".join(data))	
-                SDQ.put(state_dict)	
+                checkpoint_name = pickle.loads(b"".join(data))
+                SDQ.put(checkpoint_name)	
             except socket.timeout:
                 continue	
 
@@ -161,18 +161,18 @@ class JanggiCoach():
 
         # Connect to the server	
         client_socket.connect((HOST, PORT))	
-        log.info('Socket connected to host')	
-        client_socket.settimeout (600)	
+        log.info('Socket connected to host')
+        client_socket.settimeout (7200)
 
         while True:	
-            # Receive a data	
+            # Receive a data point
             try:	
                 data = []	
                 while True:	
                     packet = client_socket.recv(4096)	
-                    if packet[-34:]=="This is the end of a pickled data.".encode(): 	
+                    if packet[-34:]=="This is the end of a pickled data.".encode():
                         data.append(packet[:-34])	
-                        break	
+                        break
                     data.append(packet)	
                 data = pickle.loads(b"".join(data))	
             except socket.timeout:	
@@ -182,12 +182,16 @@ class JanggiCoach():
             dataQ.put(data)	
 
             # Check if any state_dict arrived, and send it over the socket	
-            if not SDQ.empty():	
+            if not SDQ.empty():
                 sd = SDQ.get()	
                 while not SDQ.empty():	
                     sd = SDQ.get()	
-                client_socket.send(pickle.dumps(sd))	
-                client_socket.send("This is the end of a pickled data.".encode())	
+                # pd = pickle.dumps(sd)+"This is the end of a pickled data.".encode()
+                # print(pd[-100:])
+                # log.info('length: '+str(len(pd)))
+                client_socket.send(pickle.dumps(sd)+"This is the end of a pickled data.".encode())
+                # log.info('Sent!')
+                # client_socket.send("This is the end of a pickled data.".encode())
 
         # Close the socket	
         client_socket.close()
@@ -215,17 +219,20 @@ class JanggiCoach():
         # Generate self-plays and train
 
         for i in range(1, self.args.numIters + 1):
+            state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}	
+            remoteSDQ.put(state_dict)
             # If remote_send (i.e. Haedong server), update state_dict	
-            if self.args.remote_send:	
-                log.info("Checking for state_dict update")	
+            if self.args.remote_send:
+                log.info("Checking for network update")	
                 if not remoteSDQ.empty():	
                     sd = remoteSDQ.get()	
                     while not remoteSDQ.empty():	
                         sd = remoteSDQ.get()	
-                    self.nnet.nnet.load_state_dict(sd)	
+                    self.nnet.load_checkpoint(self.args.checkpoint_folder, sd)
+                    # self.nnet.nnet.load_state_dict(sd)	
                     log.info("Updated state_dict")	
                 else:	
-                    log.info("No new state_dict available")	
+                    log.info("No new network available")
 
             # Create numEps queues
             queues = []
@@ -237,7 +244,7 @@ class JanggiCoach():
             for j in range(self.args.num_gpu_procs):
                 # Run nnProc	
                 state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}
-                nnProc = mp.Process(target=JanggiCoach.nnProcess, args=[(self.game, state_dict, sharedQ, j%torch.cuda.device_count(), queues)])	
+                nnProc = mp.Process(target=JanggiCoach.nnProcess, args=[(self.game, state_dict, sharedQ, self.args.gpus_to_use[j%len(self.args.gpus_to_use)], queues)])	
                 nnProc.daemon = True
                 nnProc.start()
                 nnProcs.append(nnProc)
@@ -310,12 +317,11 @@ class JanggiCoach():
 
             log.info('TRAINING AND SAVING NEW MODEL')	
             self.nnet.train(trainExamples)	
-            self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(self.selfPlaysPlayed))	
+            self.nnet.save_checkpoint(folder=self.args.checkpoint_folder, filename=self.getCheckpointFile(self.selfPlaysPlayed))
 
-            # Send the new state_dict	
-            state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}	
-            remoteSDQ.put(state_dict)	
-            log.info('Sent the updated state_dict')
+            # Send the new state_dict
+            remoteSDQ.put(self.getCheckpointFile(self.selfPlaysPlayed))	
+            log.info('Alerted updated network')
 
     def getCheckpointFile(self, iteration):
         return 'checkpoint_' + str(iteration) + '.pth.tar'
