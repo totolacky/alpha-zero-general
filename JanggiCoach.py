@@ -52,7 +52,7 @@ class JanggiCoach():
                            pi is the MCTS informed policy vector, v is +1 if
                            the player eventually won the game, else -1.
         """
-        game, args, sharedQ, mctsQ, mctsQIdx = eeArgs
+        game, args, sharedQ, mctsQ, mctsQIdx, nextSelfplayQ = eeArgs
 
         trainExamples = []
         board = game.getInitBoard()
@@ -77,20 +77,35 @@ class JanggiCoach():
             r = game.getGameEnded(board)
 
             if r != 0:
-                return [(x[0], x[2], r * x[1]) for x in trainExamples]
+                data = [(x[0], x[2], r * x[1]) for x in trainExamples]
+                if nextSelfplayQ != None:
+                    nextSelfplayQ.put(data, mctsQIdx)
+                return data
 
     @staticmethod	
     def nnProcess(nnProcArgs):	
         """	
         	
         """	
-        game, state_dict, sharedQ, gpu_num, queues = nnProcArgs	
-        nnet = nn(game, state_dict, gpu_num)	
+        game, updateQ_stateDict, sharedQ, gpu_num, queues, checkpoint_folder = nnProcArgs
+        if checkpoint_folder == None:
+            nnet = nn(game, updateQ_stateDict, gpu_num)
+        else:
+            nnet = nn(game, None, gpu_num)
         while True:	
+            # Check for nn updates
+            if checkpoint_folder != None and not updateQ_stateDict.empty():
+                cp_name = updateQ_stateDict.get()
+                while not updateQ_stateDict.empty():
+                    cp_name = updateQ_stateDict.get()
+                nnet.load_checkpoint(checkpoint_folder, cp_name)
+                log.info('Updated network.')
+            
+            # Check for evaluation requests
             req = sharedQ.get()	
             if req == None:	
                 return	
-            else:	
+            else:
                 # canonicalBoard, pipe = req	
                 canonicalBoard, qIdx = req	
                 s, v = nnet.predict(canonicalBoard)
@@ -119,7 +134,7 @@ class JanggiCoach():
         log.info('Socket connected by'+str(addr))	
 
         # Set socket timeout
-        client_socket.settimeout(1.0)	
+        client_socket.settimeout(5.0)
 
         while True:	
             # Receive a generated data	
@@ -185,17 +200,12 @@ class JanggiCoach():
             if not SDQ.empty():
                 sd = SDQ.get()	
                 while not SDQ.empty():	
-                    sd = SDQ.get()	
-                # pd = pickle.dumps(sd)+"This is the end of a pickled data.".encode()
-                # print(pd[-100:])
-                # log.info('length: '+str(len(pd)))
+                    sd = SDQ.get()
                 client_socket.send(pickle.dumps(sd)+"This is the end of a pickled data.".encode())
-                # log.info('Sent!')
-                # client_socket.send("This is the end of a pickled data.".encode())
 
         # Close the socket	
         client_socket.close()
-
+    
     def learn(self):
         """
         Performs numIters iterations with numEps episodes of self-play in each
@@ -208,32 +218,90 @@ class JanggiCoach():
             mp.set_start_method('spawn')	
         except RuntimeError:	
             pass
-        manager = mp.Manager()	
-        sharedQ = manager.Queue()	
+        if self.args.remote_send:
+            self.learn_generate()
+        else:
+            self.learn_learn()
+
+    def learn_generate(self):
+        """
+        Process that continuously generates self-play data
+        """
+        manager = mp.Manager()
+        sharedQ = manager.Queue()
+
         # Create the server-communicating process	
         remoteDataQ = manager.Queue()
         remoteSDQ = manager.Queue()
-        rrProc = mp.Process(target=JanggiCoach.remoteSendProcess if self.args.remote_send else JanggiCoach.remoteRecvProcess, args=((remoteDataQ, remoteSDQ),))	
+        rrProc = mp.Process(target=JanggiCoach.remoteSendProcess, args=((remoteDataQ, remoteSDQ),))	
+        rrProc.daemon = True	
+        rrProc.start()
+
+        # Create num_selfplay_procs queues for sending nn eval results to selfplay procs.
+        queues = []
+        for j in range(self.args.num_selfplay_procs):
+            queues.append(manager.Queue())
+
+        # Create num_gpu_procs queues for sending state_dict update info to nn procs.
+        nn_update_queues = []
+        for j in range(self.args.num_gpu_procs):
+            nn_update_queues.append(manager.Queue())
+
+        # Create num_gpu_procs nnProcess
+        nnProcs = []
+        for j in range(self.args.num_gpu_procs):
+            # Run nnProc
+            nnProc = mp.Process(target=JanggiCoach.nnProcess, args=[(self.game, nn_update_queues[j], sharedQ, self.args.gpus_to_use[j%len(self.args.gpus_to_use)], queues, self.args.checkpoint_folder)])
+            nnProc.daemon = True
+            nnProc.start()
+            nnProcs.append(nnProc)
+
+        # Create a queue for receiving info of finished jobs
+        nextSelfplayQ = manager.Queue()
+
+        # Create self-play process pool
+        selfplayPool = Pool(self.args.num_selfplay_procs)
+
+        # Run the first num_selfplay_procs process
+        for j in range(self.args.num_selfplay_procs):
+            selfplayPool.apply_async(JanggiCoach.executeEpisode, (Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[j], j, nextSelfplayQ))
+        
+        # Continuously generate self-plays
+        while True:
+            # Check for any network updates
+            if not remoteSDQ.empty():
+                cp_name = remoteSDQ.get()
+                while not remoteSDQ.empty():
+                    cp_name = remoteSDQ.get()
+                for q in nn_update_queues:
+                    q.put(cp_name)
+                log.info('Alerted the nn procs to update the network')
+
+            # Wait for a selfplay result
+            data, finished_id = nextSelfplayQ.get()
+            self.selfPlaysPlayed += 1
+            log.info(str(self.selfPlaysPlayed)+' selfplay games played')
+            remoteDataQ.put(data)
+
+            # Run new selfplay
+            selfplayPool.apply_async(JanggiCoach.executeEpisode, (Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ))
+
+    def learn_learn(self):
+        """
+        Process that generates numEps self-play data, and trains the network
+        """
+        manager = mp.Manager()	
+        sharedQ = manager.Queue()	
+
+        # Create the server-communicating process	
+        remoteDataQ = manager.Queue()
+        remoteSDQ = manager.Queue()
+        rrProc = mp.Process(target=JanggiCoach.remoteRecvProcess, args=((remoteDataQ, remoteSDQ),))	
         rrProc.daemon = True	
         rrProc.start()
         # Generate self-plays and train
 
         for i in range(1, self.args.numIters + 1):
-            state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}	
-            remoteSDQ.put(state_dict)
-            # If remote_send (i.e. Haedong server), update state_dict	
-            if self.args.remote_send:
-                log.info("Checking for network update")	
-                if not remoteSDQ.empty():	
-                    sd = remoteSDQ.get()	
-                    while not remoteSDQ.empty():	
-                        sd = remoteSDQ.get()	
-                    self.nnet.load_checkpoint(self.args.checkpoint_folder, sd)
-                    # self.nnet.nnet.load_state_dict(sd)	
-                    log.info("Updated state_dict")	
-                else:	
-                    log.info("No new network available")
-
             # Create numEps queues
             queues = []
             for j in range(self.args.numEps):
@@ -244,7 +312,7 @@ class JanggiCoach():
             for j in range(self.args.num_gpu_procs):
                 # Run nnProc	
                 state_dict = {k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}
-                nnProc = mp.Process(target=JanggiCoach.nnProcess, args=[(self.game, state_dict, sharedQ, self.args.gpus_to_use[j%len(self.args.gpus_to_use)], queues)])	
+                nnProc = mp.Process(target=JanggiCoach.nnProcess, args=[(self.game, state_dict, sharedQ, self.args.gpus_to_use[j%len(self.args.gpus_to_use)], queues, None)])	
                 nnProc.daemon = True
                 nnProc.start()
                 nnProcs.append(nnProc)
@@ -255,7 +323,7 @@ class JanggiCoach():
             # Create pool args	
             pArgs = []	
             for j in range(self.args.numEps):
-                pArgs.append((Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[j], j))
+                pArgs.append((Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[j], j, None))
 
             # bookkeeping
             log.info(f'Starting Iter #{i} ... ({self.selfPlaysPlayed} games played)')
