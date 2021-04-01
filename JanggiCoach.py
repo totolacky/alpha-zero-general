@@ -79,7 +79,7 @@ class JanggiCoach():
             if r != 0:
                 data = [(x[0], x[2], r * x[1]) for x in trainExamples]
                 if nextSelfplayQ != None:
-                    nextSelfplayQ.put(data, mctsQIdx)
+                    nextSelfplayQ.put((data, mctsQIdx))
                 return data
 
     @staticmethod	
@@ -87,19 +87,23 @@ class JanggiCoach():
         """	
         	
         """	
-        game, updateQ_stateDict, sharedQ, gpu_num, queues, checkpoint_folder = nnProcArgs
+        game, updatePipe_stateDict, sharedQ, gpu_num, queues, checkpoint_folder = nnProcArgs
         if checkpoint_folder == None:
-            nnet = nn(game, updateQ_stateDict, gpu_num)
+            nnet = nn(game, updatePipe_stateDict, gpu_num)
         else:
             nnet = nn(game, None, gpu_num)
         while True:	
             # Check for nn updates
-            if checkpoint_folder != None and not updateQ_stateDict.empty():
-                cp_name = updateQ_stateDict.get()
-                while not updateQ_stateDict.empty():
-                    cp_name = updateQ_stateDict.get()
-                nnet.load_checkpoint(checkpoint_folder, cp_name)
+            if checkpoint_folder != None and updatePipe_stateDict.poll():
+                cp_name = updatePipe_stateDict.recv()
+                while updatePipe_stateDict.poll():
+                    cp_name = updatePipe_stateDict.recv()
+                # nnet.load_checkpoint(checkpoint_folder, cp_name)
+                with open(cp_name, 'rb') as handle:
+                    state_dict = pickle.load(handle)
+                nnet.nnet.load_state_dict(state_dict)
                 log.info('Updated network.')
+                updatePipe_stateDict.send(0)
             
             # Check for evaluation requests
             req = sharedQ.get()	
@@ -234,7 +238,7 @@ class JanggiCoach():
         remoteDataQ = manager.Queue()
         remoteSDQ = manager.Queue()
         rrProc = mp.Process(target=JanggiCoach.remoteSendProcess, args=((remoteDataQ, remoteSDQ),))	
-        rrProc.daemon = True	
+        rrProc.daemon = True
         rrProc.start()
 
         # Create num_selfplay_procs queues for sending nn eval results to selfplay procs.
@@ -243,15 +247,18 @@ class JanggiCoach():
             queues.append(manager.Queue())
 
         # Create num_gpu_procs queues for sending state_dict update info to nn procs.
-        nn_update_queues = []
+        nn_update_pipes1 = []
+        nn_update_pipes1 = []
         for j in range(self.args.num_gpu_procs):
-            nn_update_queues.append(manager.Queue())
+            c1, c2 = mp.Pipe()
+            nn_update_pipes1.append(c1)
+            nn_update_pipes2.append(c2)
 
         # Create num_gpu_procs nnProcess
         nnProcs = []
         for j in range(self.args.num_gpu_procs):
             # Run nnProc
-            nnProc = mp.Process(target=JanggiCoach.nnProcess, args=[(self.game, nn_update_queues[j], sharedQ, self.args.gpus_to_use[j%len(self.args.gpus_to_use)], queues, self.args.checkpoint_folder)])
+            nnProc = mp.Process(target=JanggiCoach.nnProcess, args=[(self.game, nn_update_pipes1[j], sharedQ, self.args.gpus_to_use[j%len(self.args.gpus_to_use)], queues, self.args.checkpoint_folder)])
             nnProc.daemon = True
             nnProc.start()
             nnProcs.append(nnProc)
@@ -264,17 +271,18 @@ class JanggiCoach():
 
         # Run the first num_selfplay_procs process
         for j in range(self.args.num_selfplay_procs):
-            selfplayPool.apply_async(JanggiCoach.executeEpisode, (Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[j], j, nextSelfplayQ))
+            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[j], j, nextSelfplayQ)])
         
         # Continuously generate self-plays
         while True:
             # Check for any network updates
-            if not remoteSDQ.empty():
-                cp_name = remoteSDQ.get()
-                while not remoteSDQ.empty():
-                    cp_name = remoteSDQ.get()
-                for q in nn_update_queues:
-                    q.put(cp_name)
+            if not nextSelfplayQ.empty():
+                cp_name = nextSelfplayQ.get()
+                while not nextSelfplayQ.empty():
+                    cp_name = nextSelfplayQ.get()
+                for q in nn_update_pipes2:
+                    q.send(cp_name)
+                    q.recv()
                 log.info('Alerted the nn procs to update the network')
 
             # Wait for a selfplay result
@@ -284,7 +292,7 @@ class JanggiCoach():
             remoteDataQ.put(data)
 
             # Run new selfplay
-            selfplayPool.apply_async(JanggiCoach.executeEpisode, (Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ))
+            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ)])
 
     def learn_learn(self):
         """
@@ -387,12 +395,18 @@ class JanggiCoach():
             self.nnet.train(trainExamples)	
             self.nnet.save_checkpoint(folder=self.args.checkpoint_folder, filename=self.getCheckpointFile(self.selfPlaysPlayed))
 
+            with open(self.getStateDictFile(self.selfPlaysPlayed), 'wb') as handle:
+                pickle.dump({k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}, handle)
+
             # Send the new state_dict
-            remoteSDQ.put(self.getCheckpointFile(self.selfPlaysPlayed))	
+            remoteSDQ.put(self.getStateDictFile(self.selfPlaysPlayed))	
             log.info('Alerted updated network')
 
     def getCheckpointFile(self, iteration):
-        return 'checkpoint_' + str(iteration) + '.pth.tar'
+        return 'checkpoint_' + str(iteration) + '.pickle'
+
+    def getStateDictFile(self, iteration):
+        return os.path.join(self.args.checkpoint_folder, 'sd_' + str(iteration) + '.pickle')
 
     def saveTrainExamples(self, iteration):
         folder = self.args.checkpoint
