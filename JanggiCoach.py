@@ -120,14 +120,39 @@ class JanggiCoach():
         """	
         	
         """	
-        dataQ, SDQ, HOST, PORT = rsProcArgs
+        dataQ, SDQ, HOST, PORT, is_haedong = rsProcArgs
 
-        # Create a socket object	
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # If haedong computer, create a server socket and two client sockets
+        if is_haedong:
+            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)	
+            server_socket.bind((HOST, PORT))	
+            server_socket.listen()
+            log.info('Socket started listening on port '+str(PORT))	
 
-        # Connect to the server	
-        client_socket.connect((HOST, PORT))	
-        log.info('Socket connected to host')
+            # Return a new socket when each client connects	
+            client_socket1, addr = server_socket.accept()
+            log.info('Socket connected by'+str(addr))
+            client_socket2, addr1 = server_socket.accept()
+            log.info('Socket connected by'+str(addr))
+
+            msg1 = client_socket1.recv()
+            msg2 = client_socket2.recv()
+
+            if msg1 == 'RecvProc':
+                assert msg2 == 'SendProc'
+                client_socket = client_socket1  # The training machine
+                gen_socket = client_socket2     # The other generating machine
+            else:
+                assert msg2 == 'RecvProc'
+                client_socket = client_socket2  # The training machine
+                gen_socket = client_socket1     # The other generating machine
+        
+        # If lab machine, only create a client socket
+        else:
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect((HOST, PORT))	
+            log.info('Socket connected to host')
 
         # Set socket timeout
         client_socket.settimeout(5.0)
@@ -138,11 +163,20 @@ class JanggiCoach():
 
             # Send the data through socket	
             client_socket.sendall(pickle.dumps(data))	
-            client_socket.sendall("This is the end of a pickled data.".encode())	
+            client_socket.sendall("This is the end of a pickled data.".encode())
 
-            # Check if any state_dict arrived through the socket	
+            # Check if any data arrived from lab machine, and forward it
+            if is_haedong:
+                while True:
+                    try:
+                        packet = gen_socket.recv()
+                        client_socket.send(packet)
+                    except socket.timeout:
+                        break
+
+            # Check if any state_dict name arrived through the socket	
             try:	
-                data = []	
+                data = []
                 while True:	
                     packet = client_socket.recv(4096)	
                     if packet[-34:]=="This is the end of a pickled data.".encode(): 	
@@ -150,9 +184,11 @@ class JanggiCoach():
                         break	
                     data.append(packet)	
                 checkpoint_name = pickle.loads(b"".join(data))
-                SDQ.put(checkpoint_name)	
+                SDQ.put(checkpoint_name)
+                if is_haedong:
+                    gen_socket.send(pickle.dumps(checkpoint_name)+"This is the end of a pickled data.".encode())
             except socket.timeout:
-                continue	
+                continue
 
         # Close the socket	
         client_socket.close()	
@@ -166,18 +202,15 @@ class JanggiCoach():
         dataQ, SDQ, HOST, PORT = rrProcArgs	
 
         # Create a socket object	
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)	
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)	
-        server_socket.bind((HOST, PORT))	
-        server_socket.listen()	
-        log.info('Socket started listening on port '+str(PORT))	
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        # Return a new socket when a client connects	
-        client_socket, addr = server_socket.accept()	
-
-        # Address of connected client	
-        log.info('Socket connected by'+str(addr))	
+        # Connect to the server	
+        client_socket.connect((HOST, PORT))	
+        log.info('Socket connected to host')
         client_socket.settimeout (7200)
+
+        # Alert the haedong server
+        client_socket.send('RecvProc')
 
         while True:	
             # Receive a data point
@@ -186,7 +219,7 @@ class JanggiCoach():
                 while True:	
                     packet = client_socket.recv(4096)	
                     if packet[-34:]=="This is the end of a pickled data.".encode():
-                        data.append(packet[:-34])	
+                        data.append(packet[:-34]) 
                         break
                     data.append(packet)	
                 data = pickle.loads(b"".join(data))	
@@ -196,7 +229,7 @@ class JanggiCoach():
             # Send the data over the pipe	
             dataQ.put(data)	
 
-            # Check if any state_dict arrived, and send it over the socket	
+            # Check if any state_dict name arrived, and send it over the socket	
             if not SDQ.empty():
                 sd = SDQ.get()	
                 while not SDQ.empty():	
@@ -234,7 +267,7 @@ class JanggiCoach():
         remoteDataQ = manager.Queue()
         remoteSDQ = manager.Queue()
         HOST, PORT = self.args.send_proc_params       
-        rrProc = mp.Process(target=JanggiCoach.remoteSendProcess, args=((remoteDataQ, remoteSDQ, HOST, PORT),))	
+        rrProc = mp.Process(target=JanggiCoach.remoteSendProcess, args=((remoteDataQ, remoteSDQ, HOST, PORT, self.args.is_haedong),))	
         rrProc.daemon = True
         rrProc.start()
 

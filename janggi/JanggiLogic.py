@@ -595,8 +595,14 @@ class Board():
             # This should not happen. Panic.
             assert False
 
-        assert x >= 0 and x < CONFIG_X and y >= 0 and y < CONFIG_Y
-        assert newx >= 0 and newx < CONFIG_X and newy >= 0 and newy < CONFIG_Y
+        assert x >= 0 
+        assert x < CONFIG_X
+        assert y >= 0
+        assert y < CONFIG_Y
+        assert newx >= 0
+        assert newx < CONFIG_X
+        assert newy >= 0
+        assert newy < CONFIG_Y
         
         moving_piece = self.pieces[0][x][y]
         captured_piece = self.pieces[0][newx][newy]

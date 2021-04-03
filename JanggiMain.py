@@ -36,8 +36,10 @@ args = dotdict({
     'gpus_to_use': JMC.gpus_to_use,
 
     'remote_send': JMC.remote_send,
+    'haedong_params': JMC.haedong_params,
     'send_proc_params': JMC.send_proc_params,
-    'recv_proc_params': JMC.recv_proc_params
+    'recv_proc_params': JMC.recv_proc_params,
+    'is_haedong': JMC.is_haedong,
 })
 
 
