@@ -30,6 +30,7 @@ args = dotdict({
     'load_folder_file': JMC.load_folder_file,
     'numItersForTrainExamplesHistory': JMC.numItersForTrainExamplesHistory,
     'checkpoint_folder': JMC.checkpoint_folder,
+    'checkpoint_folders': JMC.checkpoint_folders,
 
     'num_gpu_procs': JMC.num_gpu_procs,
     'num_selfplay_procs': JMC.num_selfplay_procs,

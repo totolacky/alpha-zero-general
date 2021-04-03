@@ -114,6 +114,38 @@ class JanggiCoach():
                 canonicalBoard, qIdx = req	
                 s, v = nnet.predict(canonicalBoard)
                 queues[qIdx].put((s,v))
+    
+    @staticmethod	
+    def recvSocket(channel, alert_timeout = False):
+        """
+        Receive exact bytes from socket
+        """
+        try:
+            size = struct.unpack("i", channel.recv(struct.calcsize("i")))[0]
+            data = ""
+            while len(data) < size:
+                msg = channel.recv(size - len(data))
+                if not msg:
+                    return None
+                data += msg
+            return data
+        except socket.timeout:
+            if alert_timeout:
+                print ("socket timeout while receiving")
+            return None
+
+    @staticmethod	
+    def sendSocket(channel, msg, alert_timeout = True):
+        """
+        Send data through socket
+        """
+        try:
+            channel.send(struct.pack("i", len(msg)) + msg)
+            return True
+        except socket.timeout:
+            if alert_timeout:
+                print ("socket timeout while receiving")
+            return False
 
     @staticmethod	
     def remoteSendProcess(rsProcArgs):	
@@ -136,15 +168,15 @@ class JanggiCoach():
             client_socket2, addr1 = server_socket.accept()
             log.info('Socket connected by'+str(addr))
 
-            msg1 = client_socket1.recv()
-            msg2 = client_socket2.recv()
+            msg1 = JanggiCoach.recvSocket(client_socket1)
+            msg2 = JanggiCoach.recvSocket(client_socket2)
 
-            if msg1 == 'RecvProc':
-                assert msg2 == 'SendProc'
+            if msg1 == 'RecvProc'.encode():
+                assert msg2 == 'SendProc'.encode()
                 client_socket = client_socket1  # The training machine
                 gen_socket = client_socket2     # The other generating machine
             else:
-                assert msg2 == 'RecvProc'
+                assert msg2 == 'RecvProc'.encode()
                 client_socket = client_socket2  # The training machine
                 gen_socket = client_socket1     # The other generating machine
         
@@ -153,6 +185,7 @@ class JanggiCoach():
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_socket.connect((HOST, PORT))	
             log.info('Socket connected to host')
+            JanggiCoach.sendSocket(client_socket, 'SendProc'.encode())
 
         # Set socket timeout
         client_socket.settimeout(5.0)
@@ -161,34 +194,21 @@ class JanggiCoach():
             # Receive a generated data	
             data = dataQ.get()	
 
-            # Send the data through socket	
-            client_socket.sendall(pickle.dumps(data))	
-            client_socket.sendall("This is the end of a pickled data.".encode())
+            # Send the data through socket
+            JanggiCoach.sendSocket(client_socket, pickle.dumps(data))
 
             # Check if any data arrived from lab machine, and forward it
             if is_haedong:
-                while True:
-                    try:
-                        packet = gen_socket.recv()
-                        client_socket.send(packet)
-                    except socket.timeout:
-                        break
+                data = JanggiCoach.recvSocket(gen_socket)
+                fwd_data = pickle.loads(data)
+                JanggiCoach.sendSocket(client_socket, fwd_data, False)
 
             # Check if any state_dict name arrived through the socket	
-            try:	
-                data = []
-                while True:	
-                    packet = client_socket.recv(4096)	
-                    if packet[-34:]=="This is the end of a pickled data.".encode(): 	
-                        data.append(packet[:-34])	
-                        break	
-                    data.append(packet)	
-                checkpoint_name = pickle.loads(b"".join(data))
-                SDQ.put(checkpoint_name)
-                if is_haedong:
-                    gen_socket.send(pickle.dumps(checkpoint_name)+"This is the end of a pickled data.".encode())
-            except socket.timeout:
-                continue
+            data = JanggiCoach.recvSocket(client_socket)
+            checkpoint_name = pickle.loads(data)
+            SDQ.put(checkpoint_name)
+            if is_haedong:
+                JanggiCoach.sendSocket(gen_socket, pickle.dumps(checkpoint_name))
 
         # Close the socket	
         client_socket.close()	
@@ -210,31 +230,20 @@ class JanggiCoach():
         client_socket.settimeout (7200)
 
         # Alert the haedong server
-        client_socket.send('RecvProc')
+        JanggiCoach.sendSocket(client_socket, 'RecvProc'.encode())
 
         while True:	
             # Receive a data point
-            try:	
-                data = []	
-                while True:	
-                    packet = client_socket.recv(4096)	
-                    if packet[-34:]=="This is the end of a pickled data.".encode():
-                        data.append(packet[:-34]) 
-                        break
-                    data.append(packet)	
-                data = pickle.loads(b"".join(data))	
-            except socket.timeout:	
-                pass	
-
-            # Send the data over the pipe	
-            dataQ.put(data)	
+            JanggiCoach.recvSocket(client_socket)
+            data = pickle.loads(data)
+            dataQ.put(data)
 
             # Check if any state_dict name arrived, and send it over the socket	
             if not SDQ.empty():
                 sd = SDQ.get()	
                 while not SDQ.empty():	
                     sd = SDQ.get()
-                client_socket.send(pickle.dumps(sd)+"This is the end of a pickled data.".encode())
+                JanggiCoach.sendSocket(client_socket, pickle.dumps(sd))
 
         # Close the socket	
         client_socket.close()
@@ -266,7 +275,7 @@ class JanggiCoach():
         # Create the server-communicating process
         remoteDataQ = manager.Queue()
         remoteSDQ = manager.Queue()
-        HOST, PORT = self.args.send_proc_params       
+        HOST, PORT = self.args.haedong_params       
         rrProc = mp.Process(target=JanggiCoach.remoteSendProcess, args=((remoteDataQ, remoteSDQ, HOST, PORT, self.args.is_haedong),))	
         rrProc.daemon = True
         rrProc.start()
@@ -332,13 +341,12 @@ class JanggiCoach():
         sharedQ = manager.Queue()	
 
         # Create the server-communicating processes
-        remoteSDQs = []
+        HOST, PORT = self.args.haedong_params
         remoteDataQ = manager.Queue()
-        for HOST, PORT in self.args.recv_proc_params:
-            remoteSDQ = manager.Queue()
-            rrProc = mp.Process(target=JanggiCoach.remoteRecvProcess, args=((remoteDataQ, remoteSDQ, HOST, PORT),))	
-            rrProc.daemon = True	
-            rrProc.start()
+        remoteSDQ = manager.Queue()
+        rrProc = mp.Process(target=JanggiCoach.remoteRecvProcess, args=((remoteDataQ, remoteSDQ, HOST, PORT),))	
+        rrProc.daemon = True	
+        rrProc.start()
 
         # Generate self-plays and train
 
@@ -426,21 +434,22 @@ class JanggiCoach():
 
             log.info('TRAINING AND SAVING NEW MODEL')	
             self.nnet.train(trainExamples)	
-            self.nnet.save_checkpoint(folder=self.args.checkpoint_folder, filename=self.getCheckpointFile(self.selfPlaysPlayed))
-
-            with open(self.getStateDictFile(self.selfPlaysPlayed), 'wb') as handle:
-                pickle.dump({k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}, handle)
+            self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(self.selfPlaysPlayed))
+            
+            for f in self.args.checkpoint_folders:
+                log.info('SENDING CHECKPOINT TO SERVER')
+                with open(self.getStateDictFile(f, self.selfPlaysPlayed), 'wb') as handle:
+                    pickle.dump({k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}, handle)
 
             # Send the new state_dict
-            for remoteSDQ in remoteSDQs:
-                remoteSDQ.put(self.getStateDictFile(self.selfPlaysPlayed))	
+            remoteSDQ.put(self.getStateDictFile(self.args.checkpoint_folder, self.selfPlaysPlayed))	
             log.info('Alerted updated network')
 
     def getCheckpointFile(self, iteration):
         return 'checkpoint_' + str(iteration) + '.pickle'
 
-    def getStateDictFile(self, iteration):
-        return os.path.join(self.args.checkpoint_folder, 'sd_' + str(iteration) + '.pickle')
+    def getStateDictFile(self, folder, iteration):
+        return os.path.join(folder, 'sd_' + str(iteration) + '.pickle')
 
     def saveTrainExamples(self, iteration):
         folder = self.args.checkpoint
