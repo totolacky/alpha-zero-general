@@ -5,6 +5,7 @@
 /mnt/
 /.project
 /.pydevproject
+JanggiMainConstants.py
 
 # checkpoint
 checkpoints/

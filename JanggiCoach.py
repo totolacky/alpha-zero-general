@@ -120,22 +120,14 @@ class JanggiCoach():
         """	
         	
         """	
-        HOST = 'eelabg13.kaist.ac.kr'
-        PORT = 8080	
-        dataQ, SDQ = rsProcArgs	
+        dataQ, SDQ, HOST, PORT = rsProcArgs
 
         # Create a socket object	
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)	
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)	
-        server_socket.bind((HOST, PORT))	
-        server_socket.listen()	
-        log.info('Socket started listening on port '+str(PORT))	
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        # Return a new socket when a client connects	
-        client_socket, addr = server_socket.accept()	
-
-        # Address of connected client	
-        log.info('Socket connected by'+str(addr))	
+        # Connect to the server	
+        client_socket.connect((HOST, PORT))	
+        log.info('Socket connected to host')
 
         # Set socket timeout
         client_socket.settimeout(5.0)
@@ -171,16 +163,20 @@ class JanggiCoach():
         """	
         	
         """	
-        HOST = 'eelabg13.kaist.ac.kr'	
-        PORT = 8080	
-        dataQ, SDQ = rrProcArgs	
+        dataQ, SDQ, HOST, PORT = rrProcArgs	
 
         # Create a socket object	
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)	
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)	
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)	
+        server_socket.bind((HOST, PORT))	
+        server_socket.listen()	
+        log.info('Socket started listening on port '+str(PORT))	
 
-        # Connect to the server	
-        client_socket.connect((HOST, PORT))	
-        log.info('Socket connected to host')
+        # Return a new socket when a client connects	
+        client_socket, addr = server_socket.accept()	
+
+        # Address of connected client	
+        log.info('Socket connected by'+str(addr))	
         client_socket.settimeout (7200)
 
         while True:	
@@ -234,10 +230,11 @@ class JanggiCoach():
         manager = mp.Manager()
         sharedQ = manager.Queue()
 
-        # Create the server-communicating process	
+        # Create the server-communicating process
         remoteDataQ = manager.Queue()
         remoteSDQ = manager.Queue()
-        rrProc = mp.Process(target=JanggiCoach.remoteSendProcess, args=((remoteDataQ, remoteSDQ),))	
+        HOST, PORT = self.args.send_proc_params       
+        rrProc = mp.Process(target=JanggiCoach.remoteSendProcess, args=((remoteDataQ, remoteSDQ, HOST, PORT),))	
         rrProc.daemon = True
         rrProc.start()
 
@@ -248,7 +245,7 @@ class JanggiCoach():
 
         # Create num_gpu_procs queues for sending state_dict update info to nn procs.
         nn_update_pipes1 = []
-        nn_update_pipes1 = []
+        nn_update_pipes2 = []
         for j in range(self.args.num_gpu_procs):
             c1, c2 = mp.Pipe()
             nn_update_pipes1.append(c1)
@@ -276,10 +273,10 @@ class JanggiCoach():
         # Continuously generate self-plays
         while True:
             # Check for any network updates
-            if not nextSelfplayQ.empty():
-                cp_name = nextSelfplayQ.get()
-                while not nextSelfplayQ.empty():
-                    cp_name = nextSelfplayQ.get()
+            if not remoteSDQ.empty():
+                cp_name = remoteSDQ.get()
+                while not remoteSDQ.empty():
+                    cp_name = remoteSDQ.get()
                 for q in nn_update_pipes2:
                     q.send(cp_name)
                     q.recv()
@@ -301,12 +298,15 @@ class JanggiCoach():
         manager = mp.Manager()	
         sharedQ = manager.Queue()	
 
-        # Create the server-communicating process	
+        # Create the server-communicating processes
+        remoteSDQs = []
         remoteDataQ = manager.Queue()
-        remoteSDQ = manager.Queue()
-        rrProc = mp.Process(target=JanggiCoach.remoteRecvProcess, args=((remoteDataQ, remoteSDQ),))	
-        rrProc.daemon = True	
-        rrProc.start()
+        for HOST, PORT in self.args.recv_proc_params:
+            remoteSDQ = manager.Queue()
+            rrProc = mp.Process(target=JanggiCoach.remoteRecvProcess, args=((remoteDataQ, remoteSDQ, HOST, PORT),))	
+            rrProc.daemon = True	
+            rrProc.start()
+
         # Generate self-plays and train
 
         for i in range(1, self.args.numIters + 1):
@@ -399,7 +399,8 @@ class JanggiCoach():
                 pickle.dump({k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}, handle)
 
             # Send the new state_dict
-            remoteSDQ.put(self.getStateDictFile(self.selfPlaysPlayed))	
+            for remoteSDQ in remoteSDQs:
+                remoteSDQ.put(self.getStateDictFile(self.selfPlaysPlayed))	
             log.info('Alerted updated network')
 
     def getCheckpointFile(self, iteration):
