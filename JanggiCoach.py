@@ -5,6 +5,7 @@ import sys
 from collections import deque
 from pickle import Pickler, Unpickler
 from random import shuffle
+import struct
 
 import numpy as np
 from tqdm import tqdm
@@ -121,8 +122,10 @@ class JanggiCoach():
         Receive exact bytes from socket
         """
         try:
-            size = struct.unpack("i", channel.recv(struct.calcsize("i")))[0]
-            data = ""
+            size_recv = channel.recv(struct.calcsize("i"))
+            print(str(size_recv) +" has size "+str(len(size_recv)))
+            size = struct.unpack("i", size_recv)[0]
+            data = b""
             while len(data) < size:
                 msg = channel.recv(size - len(data))
                 if not msg:
@@ -144,7 +147,7 @@ class JanggiCoach():
             return True
         except socket.timeout:
             if alert_timeout:
-                print ("socket timeout while receiving")
+                print ("socket timeout while sending")
             return False
 
     @staticmethod	
@@ -189,6 +192,8 @@ class JanggiCoach():
 
         # Set socket timeout
         client_socket.settimeout(5.0)
+        if is_haedong:
+            gen_socket.settimeout(5.0)
 
         while True:	
             # Receive a generated data	
@@ -199,26 +204,32 @@ class JanggiCoach():
 
             # Check if any data arrived from lab machine, and forward it
             if is_haedong:
-                data = JanggiCoach.recvSocket(gen_socket)
-                fwd_data = pickle.loads(data)
-                JanggiCoach.sendSocket(client_socket, fwd_data, False)
+                while True:
+                    data = JanggiCoach.recvSocket(gen_socket)
+                    if data == None:
+                        break
+                    JanggiCoach.sendSocket(client_socket, data, False)
 
             # Check if any state_dict name arrived through the socket	
             data = JanggiCoach.recvSocket(client_socket)
+            if data == None:
+                continue
+
             checkpoint_name = pickle.loads(data)
             SDQ.put(checkpoint_name)
             if is_haedong:
                 JanggiCoach.sendSocket(gen_socket, pickle.dumps(checkpoint_name))
 
         # Close the socket	
-        client_socket.close()	
-        server_socket.close()	
+        client_socket.close()
+        server_socket.close()
 
     @staticmethod	
     def remoteRecvProcess(rrProcArgs):
         """	
         	
         """	
+        cnt = 0
         dataQ, SDQ, HOST, PORT = rrProcArgs	
 
         # Create a socket object	
@@ -227,16 +238,23 @@ class JanggiCoach():
         # Connect to the server	
         client_socket.connect((HOST, PORT))	
         log.info('Socket connected to host')
-        client_socket.settimeout (7200)
 
         # Alert the haedong server
         JanggiCoach.sendSocket(client_socket, 'RecvProc'.encode())
 
+        client_socket.settimeout (7200)
+
         while True:	
+            print("trying ro receive something.")
             # Receive a data point
-            JanggiCoach.recvSocket(client_socket)
-            data = pickle.loads(data)
-            dataQ.put(data)
+            data = JanggiCoach.recvSocket(client_socket)
+            if data != None:
+                print("Received something of length "+str(len(data))+" from remote")
+                data = pickle.loads(data)
+                dataQ.put(data)
+                
+                cnt += 1
+                print("Received "+str(cnt)+" data from remote")
 
             # Check if any state_dict name arrived, and send it over the socket	
             if not SDQ.empty():
