@@ -2,6 +2,7 @@ import logging
 import os
 import torch
 import sys
+import json
 from collections import deque
 from pickle import Pickler, Unpickler
 from random import shuffle
@@ -18,7 +19,7 @@ from torch.multiprocessing import Pool
 from time import time
 from janggi.pytorch.NNet import NNetWrapper as nn	
 from janggi.JanggiGame import JanggiGame as Game	
-import socket, pickle
+import requests, pickle
 
 log = logging.getLogger(__name__)
 
@@ -114,167 +115,20 @@ class JanggiCoach():
                 canonicalBoard, qIdx = req	
                 s, v = nnet.predict(canonicalBoard)
                 queues[qIdx].put((s,v))
-    
-    @staticmethod	
-    def recvSocket(channel, alert_timeout = False):
-        """
-        Receive exact bytes from socket
-        """
-        try:
-            size_recv = channel.recv(struct.calcsize("i"))
-            size = struct.unpack("i", size_recv)[0]
-            data = b""
-            size *= 3
-            l = 0
-            while len(data) < size:
-                msg = channel.recv(min(4096, size - len(data)))
-                if not msg:
-                    return None
-                data += msg
-                l += len(msg)
-            data = pickle.loads(data)
-            return data
-        except socket.timeout:
-            if alert_timeout:
-                print ("socket timeout while receiving")
-            return None
 
     @staticmethod	
-    def sendSocket(channel, msg, alert_timeout = True):
-        """
-        Send data through socket
-        """
-        msg = pickle.dumps(msg, pickle.HIGHEST_PROTOCOL)
-        msgs = [msg[i:i+50000] for i in range(0, len(msg), 50000)]
-        try:
-            channel.send(struct.pack("i", len(msg)))
-            for m in msgs:
-                channel.send(m)
-            return True
-        except socket.timeout:
-            if alert_timeout:
-                print ("socket timeout while sending")
-            return False
-
-    @staticmethod	
-    def remoteSendProcess(rsProcArgs):	
+    def trainingHTTPProcess(rrProcArgs):
         """	
         	
         """	
-        dataQ, SDQ, HOST, PORT, is_haedong, urp_available = rsProcArgs
-
-        if urp_available:
-            assert is_haedong
-
-        # If haedong computer, create a server socket and two client sockets
-        if is_haedong:
-            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server_socket.bind((HOST, PORT))	
-            server_socket.listen()
-            log.info('Socket started listening on port '+str(PORT))	
-
-            # Return a new socket when each client connects	
-            client_socket1, addr = server_socket.accept()
-            log.info('Socket connected by'+str(addr))
-
-            if urp_available:
-                client_socket2, addr1 = server_socket.accept()
-                log.info('Socket connected by'+str(addr1))
-
-                msg1 = JanggiCoach.recvSocket(client_socket1)
-                msg2 = JanggiCoach.recvSocket(client_socket2)
-
-                if msg1 == 'RecvProc':
-                    assert msg2 == 'SendProc'
-                    client_socket = client_socket1  # The training machine
-                    gen_socket = client_socket2     # The other generating machine
-                else:
-                    assert msg2 == 'RecvProc'
-                    client_socket = client_socket2  # The training machine
-                    gen_socket = client_socket1     # The other generating machine
-            else:
-                msg1 = JanggiCoach.recvSocket(client_socket1)
-                assert msg1 == 'RecvProc'
-                client_socket = client_socket1
-        
-        # If lab machine, only create a client socket
-        else:
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect((HOST, PORT))	
-            log.info('Socket connected to host')
-            JanggiCoach.sendSocket(client_socket, 'SendProc')
-
-        # Set socket timeout
-        client_socket.settimeout(2.0)
-        if urp_available:
-            gen_socket.settimeout(2.0)
-
-        while True:	
-            # Receive a generated data	
-            data = dataQ.get()	
-
-            # Send the data through socket
-            JanggiCoach.sendSocket(client_socket, data)
-
-            # Check if any data arrived from lab machine, and forward it
-            if urp_available:
-                while True:
-                    data = JanggiCoach.recvSocket(gen_socket)
-                    if data == None:
-                        break
-                    JanggiCoach.sendSocket(client_socket, data)
-
-            # Check if any state_dict name arrived through the socket	
-            data = JanggiCoach.recvSocket(client_socket)
-            if data == None:
-                continue
-
-            checkpoint_name = data
-            SDQ.put(checkpoint_name)
-            if urp_available:
-                JanggiCoach.sendSocket(gen_socket, checkpoint_name)
-
-        # Close the socket	
-        client_socket.close()
-        server_socket.close()
-
-    @staticmethod	
-    def remoteRecvProcess(rrProcArgs):
-        """	
-        	
-        """	
-        cnt = 0
-        dataQ, SDQ, HOST, PORT = rrProcArgs	
-
-        # Create a socket object	
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        # Connect to the server	
-        client_socket.connect((HOST, PORT))	
-        log.info('Socket connected to host')
-
-        # Alert the haedong server
-        JanggiCoach.sendSocket(client_socket, 'RecvProc')
-
-        client_socket.settimeout (7200)
+        dataQ, base_url = rrProcArgs
 
         while True:
             # Receive a data point
-            data = JanggiCoach.recvSocket(client_socket)
-            if data != None:
-                dataQ.put(data)
-                cnt += 1
-
-            # Check if any state_dict name arrived, and send it over the socket	
-            if not SDQ.empty():
-                sd = SDQ.get()	
-                while not SDQ.empty():	
-                    sd = SDQ.get()
-                JanggiCoach.sendSocket(client_socket, sd)
-
-        # Close the socket	
-        client_socket.close()
+            data = json.loads(requests.get(url = base_url+"/getData"))
+            for c, d in data:
+                dataQ.put((c, d))
+            time.sleep(10)
     
     def learn(self):
         """
@@ -284,29 +138,22 @@ class JanggiCoach():
         It then pits the new neural network against the old one and accepts it
         only if it wins >= updateThreshold fraction of games.
         """
-        try:	
+        try:
             mp.set_start_method('spawn')	
         except RuntimeError:	
             pass
-        if self.args.remote_send:
-            self.learn_generate()
+        if self.args.is_training_client:
+            self.learn_selfplay_client()
         else:
-            self.learn_learn()
+            self.learn_training_client()
 
-    def learn_generate(self):
+    def learn_selfplay_client(self):
         """
         Process that continuously generates self-play data
         """
         manager = mp.Manager()
         sharedQ = manager.Queue()
-
-        # Create the server-communicating process
-        remoteDataQ = manager.Queue()
-        remoteSDQ = manager.Queue()
-        HOST, PORT = self.args.haedong_params       
-        rrProc = mp.Process(target=JanggiCoach.remoteSendProcess, args=((remoteDataQ, remoteSDQ, HOST, PORT, self.args.is_haedong),))	
-        rrProc.daemon = True
-        rrProc.start()
+        statedict_name = "Default"
 
         # Create num_selfplay_procs queues for sending nn eval results to selfplay procs.
         queues = []
@@ -342,26 +189,25 @@ class JanggiCoach():
         
         # Continuously generate self-plays
         while True:
+            # Wait for a selfplay result
+            data, finished_id = nextSelfplayQ.get()
+            self.selfPlaysPlayed += 1
+            log.info(str(self.selfPlaysPlayed)+' selfplay games played')
+            requests.post(url = base_url+"/postData", data = json.dumps(data))
+
+            # Run new selfplay
+            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ)])
+
             # Check for any network updates
-            if not remoteSDQ.empty():
-                cp_name = remoteSDQ.get()
-                while not remoteSDQ.empty():
-                    cp_name = remoteSDQ.get()
+            new_sd = json.loads(requests.get(url = base_url+"/getSD"))
+            if statedict_name != new_sd:
+                statedict_name = new_sd
                 for q in nn_update_pipes2:
                     q.send(cp_name)
                     q.recv()
                 log.info('Alerted the nn procs to update the network')
 
-            # Wait for a selfplay result
-            data, finished_id = nextSelfplayQ.get()
-            self.selfPlaysPlayed += 1
-            log.info(str(self.selfPlaysPlayed)+' selfplay games played')
-            remoteDataQ.put(data)
-
-            # Run new selfplay
-            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ)])
-
-    def learn_learn(self):
+    def learn_training_client(self):
         """
         Process that generates numEps self-play data, and trains the network
         """
@@ -369,15 +215,12 @@ class JanggiCoach():
         sharedQ = manager.Queue()	
 
         # Create the server-communicating processes
-        HOST, PORT = self.args.haedong_params
         remoteDataQ = manager.Queue()
-        remoteSDQ = manager.Queue()
-        rrProc = mp.Process(target=JanggiCoach.remoteRecvProcess, args=((remoteDataQ, remoteSDQ, HOST, PORT),))	
+        rrProc = mp.Process(target=JanggiCoach.trainingHTTPProcess, args=((remoteDataQ, self.args.request_base_url),))	
         rrProc.daemon = True	
         rrProc.start()
 
         # Generate self-plays and train
-
         for i in range(1, self.args.numIters + 1):
             # Create numEps queues
             queues = []
@@ -411,12 +254,9 @@ class JanggiCoach():
                 log.info('Start generating self-plays')	
                 with tqdm(total = self.args.numEps) as pbar:	
                     for d in tqdm(selfplayPool.imap_unordered(JanggiCoach.executeEpisode, pArgs)):	
-                        if self.args.remote_send:	
-                            remoteDataQ.put(d)	
-                        else:	
-                            iterationTrainExamples += d	
+                        iterationTrainExamples += d	
                         pbar.update()
-                	
+                
                 self.selfPlaysPlayed += self.args.numEps
 
                 # save the iteration examples to the history 
@@ -429,18 +269,14 @@ class JanggiCoach():
             for j in range(self.args.num_gpu_procs):	
                 sharedQ.put(None)	
             for j in range(self.args.num_gpu_procs):	
-                nnProcs[j].join()	
-
-            # If the process is remote_send (i.e. the Haedong server), then skip the training part	
-            if self.args.remote_send:	
-                continue	
+                nnProcs[j].join()
             	
             # Otherwise, add the server-generated examples to the iterationTrainExamples	
             num_remote_selfplays = 0	
-            while not remoteDataQ.empty():	
-                d = remoteDataQ.get()	
+            while not remoteDataQ.empty():
+                c, d = remoteDataQ.get()
                 iterationTrainExamples += d	
-                num_remote_selfplays += 1	
+                num_remote_selfplays += c
             	
             log.info(f'{num_remote_selfplays} self-play data loaded from remote server')	
             self.selfPlaysPlayed += num_remote_selfplays
@@ -465,12 +301,12 @@ class JanggiCoach():
             self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(self.selfPlaysPlayed))
             
             for f in self.args.checkpoint_folders:
-                log.info('SENDING CHECKPOINT TO SERVER')
+                log.info('SENDING CHECKPOINT TO SERVER VIA MOUNTED FOLDER')
                 with open(self.getStateDictFile(f, self.selfPlaysPlayed), 'wb') as handle:
                     pickle.dump({k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}, handle)
 
             # Send the new state_dict
-            remoteSDQ.put(self.getStateDictFile(self.args.checkpoint_folder, self.selfPlaysPlayed))	
+            requests.post(url = self.args.request_base_url+"/postSD", data = json.dumps(self.getStateDictFile(self.args.checkpoint_folder, self.selfPlaysPlayed)))
             log.info('Alerted updated network')
 
     def getCheckpointFile(self, iteration):
