@@ -122,14 +122,16 @@ class JanggiCoach():
         """
         try:
             size_recv = channel.recv(struct.calcsize("i"))
-            print(str(size_recv) +" has size "+str(len(size_recv)))
             size = struct.unpack("i", size_recv)[0]
             data = b""
+            size *= 3
+            l = 0
             while len(data) < size:
-                msg = channel.recv(size - len(data))
+                msg = channel.recv(min(4096, size - len(data)))
                 if not msg:
                     return None
                 data += msg
+                l += len(msg)
             data = pickle.loads(data)
             return data
         except socket.timeout:
@@ -142,9 +144,12 @@ class JanggiCoach():
         """
         Send data through socket
         """
-        msg = pickle.dumps(msg)
+        msg = pickle.dumps(msg, pickle.HIGHEST_PROTOCOL)
+        msgs = [msg[i:i+50000] for i in range(0, len(msg), 50000)]
         try:
-            channel.send(struct.pack("i", len(msg)) + msg)
+            channel.send(struct.pack("i", len(msg)))
+            for m in msgs:
+                channel.send(m)
             return True
         except socket.timeout:
             if alert_timeout:
@@ -156,12 +161,15 @@ class JanggiCoach():
         """	
         	
         """	
-        dataQ, SDQ, HOST, PORT, is_haedong = rsProcArgs
+        dataQ, SDQ, HOST, PORT, is_haedong, urp_available = rsProcArgs
+
+        if urp_available:
+            assert is_haedong
 
         # If haedong computer, create a server socket and two client sockets
         if is_haedong:
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)	
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server_socket.bind((HOST, PORT))	
             server_socket.listen()
             log.info('Socket started listening on port '+str(PORT))	
@@ -169,20 +177,26 @@ class JanggiCoach():
             # Return a new socket when each client connects	
             client_socket1, addr = server_socket.accept()
             log.info('Socket connected by'+str(addr))
-            client_socket2, addr1 = server_socket.accept()
-            log.info('Socket connected by'+str(addr))
 
-            msg1 = JanggiCoach.recvSocket(client_socket1)
-            msg2 = JanggiCoach.recvSocket(client_socket2)
+            if urp_available:
+                client_socket2, addr1 = server_socket.accept()
+                log.info('Socket connected by'+str(addr1))
 
-            if msg1 == 'RecvProc':
-                assert msg2 == 'SendProc'
-                client_socket = client_socket1  # The training machine
-                gen_socket = client_socket2     # The other generating machine
+                msg1 = JanggiCoach.recvSocket(client_socket1)
+                msg2 = JanggiCoach.recvSocket(client_socket2)
+
+                if msg1 == 'RecvProc':
+                    assert msg2 == 'SendProc'
+                    client_socket = client_socket1  # The training machine
+                    gen_socket = client_socket2     # The other generating machine
+                else:
+                    assert msg2 == 'RecvProc'
+                    client_socket = client_socket2  # The training machine
+                    gen_socket = client_socket1     # The other generating machine
             else:
-                assert msg2 == 'RecvProc'
-                client_socket = client_socket2  # The training machine
-                gen_socket = client_socket1     # The other generating machine
+                msg1 = JanggiCoach.recvSocket(client_socket1)
+                assert msg1 == 'RecvProc'
+                client_socket = client_socket1
         
         # If lab machine, only create a client socket
         else:
@@ -193,7 +207,7 @@ class JanggiCoach():
 
         # Set socket timeout
         client_socket.settimeout(2.0)
-        if is_haedong:
+        if urp_available:
             gen_socket.settimeout(2.0)
 
         while True:	
@@ -204,7 +218,7 @@ class JanggiCoach():
             JanggiCoach.sendSocket(client_socket, data)
 
             # Check if any data arrived from lab machine, and forward it
-            if is_haedong:
+            if urp_available:
                 while True:
                     data = JanggiCoach.recvSocket(gen_socket)
                     if data == None:
@@ -218,7 +232,7 @@ class JanggiCoach():
 
             checkpoint_name = data
             SDQ.put(checkpoint_name)
-            if is_haedong:
+            if urp_available:
                 JanggiCoach.sendSocket(gen_socket, checkpoint_name)
 
         # Close the socket	
@@ -245,15 +259,12 @@ class JanggiCoach():
 
         client_socket.settimeout (7200)
 
-        while True:	
-            print("trying ro receive something.")
+        while True:
             # Receive a data point
             data = JanggiCoach.recvSocket(client_socket)
             if data != None:
-                print("Received something of length "+str(len(data))+" from remote")
                 dataQ.put(data)
                 cnt += 1
-                print("Received "+str(cnt)+" data from remote")
 
             # Check if any state_dict name arrived, and send it over the socket	
             if not SDQ.empty():
