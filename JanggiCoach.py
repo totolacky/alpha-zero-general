@@ -99,7 +99,6 @@ class JanggiCoach():
                 cp_name = updatePipe_stateDict.recv()
                 while updatePipe_stateDict.poll():
                     cp_name = updatePipe_stateDict.recv()
-                # nnet.load_checkpoint(checkpoint_folder, cp_name)
                 with open(cp_name, 'rb') as handle:
                     state_dict = pickle.load(handle)
                 nnet.nnet.load_state_dict(state_dict)
@@ -131,6 +130,7 @@ class JanggiCoach():
                 if not msg:
                     return None
                 data += msg
+            data = pickle.loads(data)
             return data
         except socket.timeout:
             if alert_timeout:
@@ -142,6 +142,7 @@ class JanggiCoach():
         """
         Send data through socket
         """
+        msg = pickle.dumps(msg)
         try:
             channel.send(struct.pack("i", len(msg)) + msg)
             return True
@@ -174,12 +175,12 @@ class JanggiCoach():
             msg1 = JanggiCoach.recvSocket(client_socket1)
             msg2 = JanggiCoach.recvSocket(client_socket2)
 
-            if msg1 == 'RecvProc'.encode():
-                assert msg2 == 'SendProc'.encode()
+            if msg1 == 'RecvProc':
+                assert msg2 == 'SendProc'
                 client_socket = client_socket1  # The training machine
                 gen_socket = client_socket2     # The other generating machine
             else:
-                assert msg2 == 'RecvProc'.encode()
+                assert msg2 == 'RecvProc'
                 client_socket = client_socket2  # The training machine
                 gen_socket = client_socket1     # The other generating machine
         
@@ -188,19 +189,19 @@ class JanggiCoach():
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_socket.connect((HOST, PORT))	
             log.info('Socket connected to host')
-            JanggiCoach.sendSocket(client_socket, 'SendProc'.encode())
+            JanggiCoach.sendSocket(client_socket, 'SendProc')
 
         # Set socket timeout
-        client_socket.settimeout(5.0)
+        client_socket.settimeout(2.0)
         if is_haedong:
-            gen_socket.settimeout(5.0)
+            gen_socket.settimeout(2.0)
 
         while True:	
             # Receive a generated data	
             data = dataQ.get()	
 
             # Send the data through socket
-            JanggiCoach.sendSocket(client_socket, pickle.dumps(data))
+            JanggiCoach.sendSocket(client_socket, data)
 
             # Check if any data arrived from lab machine, and forward it
             if is_haedong:
@@ -208,17 +209,17 @@ class JanggiCoach():
                     data = JanggiCoach.recvSocket(gen_socket)
                     if data == None:
                         break
-                    JanggiCoach.sendSocket(client_socket, data, False)
+                    JanggiCoach.sendSocket(client_socket, data)
 
             # Check if any state_dict name arrived through the socket	
             data = JanggiCoach.recvSocket(client_socket)
             if data == None:
                 continue
 
-            checkpoint_name = pickle.loads(data)
+            checkpoint_name = data
             SDQ.put(checkpoint_name)
             if is_haedong:
-                JanggiCoach.sendSocket(gen_socket, pickle.dumps(checkpoint_name))
+                JanggiCoach.sendSocket(gen_socket, checkpoint_name)
 
         # Close the socket	
         client_socket.close()
@@ -240,7 +241,7 @@ class JanggiCoach():
         log.info('Socket connected to host')
 
         # Alert the haedong server
-        JanggiCoach.sendSocket(client_socket, 'RecvProc'.encode())
+        JanggiCoach.sendSocket(client_socket, 'RecvProc')
 
         client_socket.settimeout (7200)
 
@@ -250,9 +251,7 @@ class JanggiCoach():
             data = JanggiCoach.recvSocket(client_socket)
             if data != None:
                 print("Received something of length "+str(len(data))+" from remote")
-                data = pickle.loads(data)
                 dataQ.put(data)
-                
                 cnt += 1
                 print("Received "+str(cnt)+" data from remote")
 
@@ -261,7 +260,7 @@ class JanggiCoach():
                 sd = SDQ.get()	
                 while not SDQ.empty():	
                     sd = SDQ.get()
-                JanggiCoach.sendSocket(client_socket, pickle.dumps(sd))
+                JanggiCoach.sendSocket(client_socket, sd)
 
         # Close the socket	
         client_socket.close()
