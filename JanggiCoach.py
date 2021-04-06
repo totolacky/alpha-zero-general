@@ -96,9 +96,11 @@ class JanggiCoach():
         while True:	
             # Check for nn updates
             if checkpoint_folder != None and updatePipe_stateDict.poll():
+                log.info("new checkpoint exists!")
                 cp_name = updatePipe_stateDict.recv()
                 while updatePipe_stateDict.poll():
                     cp_name = updatePipe_stateDict.recv()
+                log.info("cp_name: "+cp_name)
                 with open(cp_name, 'rb') as handle:
                     state_dict = pickle.load(handle)
                 nnet.nnet.load_state_dict(state_dict)
@@ -124,7 +126,7 @@ class JanggiCoach():
 
         while True:
             # Receive a data point
-            cnt, data = pickle.loads(requests.get(url = base_url+"/getData").text)
+            cnt, data = pickle.loads(requests.get(url = base_url+"/getData").content)
             dataQ.put((cnt, data))
             sleep(10)
     
@@ -189,6 +191,7 @@ class JanggiCoach():
         while True:
             # Wait for a selfplay result
             data, finished_id = nextSelfplayQ.get()
+            print(len(data))
             self.selfPlaysPlayed += 1
             log.info(str(self.selfPlaysPlayed)+' selfplay games played')
             requests.post(url = self.args.request_base_url+"/postData", data = pickle.dumps(data))
@@ -197,11 +200,11 @@ class JanggiCoach():
             selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ)])
 
             # Check for any network updates
-            new_sd = pickle.loads(requests.get(url = base_url+"/getSD").text)
+            new_sd = pickle.loads(requests.get(url = self.args.request_base_url+"/getSD").content)
             if statedict_name != new_sd:
                 statedict_name = new_sd
                 for q in nn_update_pipes2:
-                    q.send(cp_name)
+                    q.send(statedict_name)
                     q.recv()
                 log.info('Alerted the nn procs to update the network')
 
@@ -304,7 +307,7 @@ class JanggiCoach():
                     pickle.dump({k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}, handle)
 
             # Send the new state_dict
-            requests.post(url = self.args.request_base_url+"/postSD", data = pickle.dumps(self.getStateDictFile(self.args.checkpoint_folder, self.selfPlaysPlayed)))
+            requests.post(url = self.args.request_base_url+"/updateSD", data = pickle.dumps(self.getStateDictFile(self.args.checkpoint_folder, self.selfPlaysPlayed)))
             log.info('Alerted updated network')
 
     def getCheckpointFile(self, iteration):
