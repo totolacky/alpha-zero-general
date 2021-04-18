@@ -20,6 +20,8 @@ from janggi.pytorch.NNet import NNetWrapper as nn
 from janggi.JanggiGame import JanggiGame as Game	
 import requests, pickle
 
+import JanggiMainConstants as JMC
+
 log = logging.getLogger(__name__)
 
 class JanggiCoach():
@@ -34,7 +36,7 @@ class JanggiCoach():
         self.args = args
         self.trainExamplesHistory = []  # history of examples from args.numItersForTrainExamplesHistory latest iterations
         self.skipFirstSelfPlay = False  # can be overriden in loadTrainExamples()
-        self.selfPlaysPlayed = 0	
+        self.selfPlaysPlayed = 0
 
     @staticmethod
     def executeEpisode(eeArgs):
@@ -53,14 +55,18 @@ class JanggiCoach():
                            pi is the MCTS informed policy vector, v is +1 if
                            the player eventually won the game, else -1.
         """
-        game, args, sharedQ, mctsQ, mctsQIdx, nextSelfplayQ = eeArgs
+        game, args, sharedQ, mctsQ, mctsQIdx, nextSelfplayQ, state_dict = eeArgs
 
         trainExamples = []
         board = game.getInitBoard()
         episodeStep = 0
         alternate = 1
 
-        mcts = JanggiMCTS(game, sharedQ, args, True, mctsQ, mctsQIdx)
+        if sharedQ == None:
+            nnet = nn(game, state_dict, mctsQIdx)
+            mcts = JanggiMCTS(game, state_dict, args)
+        else:
+            mcts = JanggiMCTS(game, sharedQ, args, True, mctsQ, mctsQIdx)
 
         while True:
             episodeStep += 1
@@ -101,7 +107,7 @@ class JanggiCoach():
                 while updatePipe_stateDict.poll():
                     cp_name = updatePipe_stateDict.recv()
                 log.info("cp_name: "+cp_name)
-                with open(cp_name, 'rb') as handle:
+                with open(JanggiCoach.getSharedStateDictFile(JMC.checkpoint_folder), 'rb') as handle:
                     state_dict = pickle.load(handle)
                 nnet.nnet.load_state_dict(state_dict)
                 log.info('Updated network.')
@@ -184,20 +190,23 @@ class JanggiCoach():
         selfplayPool = Pool(self.args.num_selfplay_procs)
 
         # Run the first num_selfplay_procs process
+        ibs = pickle.loads(requests.get(url = self.args.request_base_url+"/getIBS").content)
         for j in range(self.args.num_selfplay_procs):
-            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[j], j, nextSelfplayQ)])
+            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2, mode = ibs), self.args, sharedQ, queues[j], j, nextSelfplayQ, None)])
         
         # Continuously generate self-plays
         while True:
             # Wait for a selfplay result
             data, finished_id = nextSelfplayQ.get()
-            print(len(data))
             self.selfPlaysPlayed += 1
-            log.info(str(self.selfPlaysPlayed)+' selfplay games played')
+            log.info(str(self.selfPlaysPlayed)+' selfplay games played. Data length = '+str(len(data)))
+            # for d, p, v in data:
+            #     Game.display_flat(d[0] + 2 * d[1] + 3 * d[2] + 4 * d[3] + 5 * d[4] + 6 * d[5] + 7 * d[6] - d[7] - 2 * d[8] - 3 * d[9] - 4 * d[10] - 5 * d[11] - 6 * d[12] - 7 * d[13])
             requests.post(url = self.args.request_base_url+"/postData", data = pickle.dumps(data))
 
             # Run new selfplay
-            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ)])
+            ibs = pickle.loads(requests.get(url = self.args.request_base_url+"/getIBS").content)
+            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2, mode = ibs), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ, None)])
 
             # Check for any network updates
             new_sd = pickle.loads(requests.get(url = self.args.request_base_url+"/getSD").content)
@@ -208,18 +217,57 @@ class JanggiCoach():
                     q.recv()
                 log.info('Alerted the nn procs to update the network')
 
+    def learn_single_selfplay_client(self):
+        """
+        Process that continuously generates self-play data
+        """
+        manager = mp.Manager()
+        statedict_name = "Default"
+        state_dict = None
+
+        # Create a queue for receiving info of finished jobs
+        nextSelfplayQ = manager.Queue()
+
+        # Create self-play process pool
+        selfplayPool = Pool(self.args.num_selfplay_procs)
+
+        # Run the first num_selfplay_procs process
+        ibs = pickle.loads(requests.get(url = self.args.request_base_url+"/getIBS").content)
+        for j in range(self.args.num_selfplay_procs):
+            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2, mode = ibs), self.args, None, None, self.args.gpus_to_use[j%len(self.args.gpus_to_use)], nextSelfplayQ, state_dict)])
+        
+        # Continuously generate self-plays
+        while True:
+            # Wait for a selfplay result
+            data, finished_id = nextSelfplayQ.get()
+            self.selfPlaysPlayed += 1
+            log.info(str(self.selfPlaysPlayed)+' selfplay games played. Data length = '+str(len(data)))
+            requests.post(url = self.args.request_base_url+"/postData", data = pickle.dumps(data))
+
+            # Run new selfplay
+            ibs = pickle.loads(requests.get(url = self.args.request_base_url+"/getIBS").content)
+            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2, mode = ibs), self.args, None, None, finished_id, nextSelfplayQ, state_dict)])
+
+            # Check for any network updates
+            new_sd = pickle.loads(requests.get(url = self.args.request_base_url+"/getSD").content)
+            if statedict_name != new_sd:
+                statedict_name = new_sd
+                with open(statedict_name, 'rb') as handle:
+                    state_dict = pickle.load(handle)
+                log.info('Updated state_dict')
+
     def learn_training_client(self):
         """
         Process that generates numEps self-play data, and trains the network
         """
-        manager = mp.Manager()	
-        sharedQ = manager.Queue()	
+        manager = mp.Manager()
+        sharedQ = manager.Queue()
 
         # Create the server-communicating processes
-        remoteDataQ = manager.Queue()
-        rrProc = mp.Process(target=JanggiCoach.trainingHTTPProcess, args=((remoteDataQ, self.args.request_base_url),))	
-        rrProc.daemon = True	
-        rrProc.start()
+        # remoteDataQ = manager.Queue()
+        # rrProc = mp.Process(target=JanggiCoach.trainingHTTPProcess, args=((remoteDataQ, self.args.request_base_url),))	
+        # rrProc.daemon = True
+        # rrProc.start()
 
         # Generate self-plays and train
         for i in range(1, self.args.numIters + 1):
@@ -244,11 +292,15 @@ class JanggiCoach():
             # Create pool args	
             pArgs = []	
             for j in range(self.args.numEps):
-                pArgs.append((Game(self.game.c1, self.game.c2), self.args, sharedQ, queues[j], j, None))
+                ibs = pickle.loads(requests.get(url = self.args.request_base_url+"/getIBS").content)
+                pArgs.append((Game(self.game.c1, self.game.c2, mode = ibs), self.args, sharedQ, queues[j], j, None, None))
 
             # bookkeeping
             log.info(f'Starting Iter #{i} ... ({self.selfPlaysPlayed} games played)')
+
             # examples of the iteration
+            num_remote_selfplays = 0
+
             if not self.skipFirstSelfPlay or i > 1:
                 iterationTrainExamples = deque([], maxlen=self.args.maxlenOfQueue)
 
@@ -257,14 +309,22 @@ class JanggiCoach():
                     for d in tqdm(selfplayPool.imap_unordered(JanggiCoach.executeEpisode, pArgs)):	
                         iterationTrainExamples += d	
                         pbar.update()
-                
+                        c, d = pickle.loads(requests.get(url = self.args.request_base_url+"/getData").content)
+                        iterationTrainExamples += d
+                        num_remote_selfplays += c
+                        # # Periodically flush remoteDataQ
+                        # while not remoteDataQ.empty():
+                        #     c, d = remoteDataQ.get()
+                        #     iterationTrainExamples += d	
+                        #     num_remote_selfplays += c
+
                 self.selfPlaysPlayed += self.args.numEps
 
                 # save the iteration examples to the history 
                 self.trainExamplesHistory.append(iterationTrainExamples)
 
             # Close the process pool	
-            selfplayPool.close()	
+            selfplayPool.close()
 
             # Kill the NN processes	
             for j in range(self.args.num_gpu_procs):	
@@ -272,14 +332,8 @@ class JanggiCoach():
             for j in range(self.args.num_gpu_procs):	
                 nnProcs[j].join()
             	
-            # Otherwise, add the server-generated examples to the iterationTrainExamples	
-            num_remote_selfplays = 0	
-            while not remoteDataQ.empty():
-                c, d = remoteDataQ.get()
-                iterationTrainExamples += d	
-                num_remote_selfplays += c
-            	
-            log.info(f'{num_remote_selfplays} self-play data loaded from remote server')	
+            # Add the server-generated examples to the iterationTrainExamples
+            log.info(f'{num_remote_selfplays} self-play data loaded from remote server')
             self.selfPlaysPlayed += num_remote_selfplays
 
             # Update the trainExamplesHistory
@@ -303,11 +357,11 @@ class JanggiCoach():
             
             for f in self.args.checkpoint_folders:
                 log.info('SENDING CHECKPOINT TO SERVER VIA MOUNTED FOLDER')
-                with open(self.getStateDictFile(f, self.selfPlaysPlayed), 'wb') as handle:
+                with open(JanggiCoach.getSharedStateDictFile(f), 'wb') as handle:
                     pickle.dump({k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}, handle)
 
             # Send the new state_dict
-            requests.post(url = self.args.request_base_url+"/updateSD", data = pickle.dumps(self.getStateDictFile(self.args.checkpoint_folder, self.selfPlaysPlayed)))
+            requests.post(url = self.args.request_base_url+"/updateSD", data = pickle.dumps(self.selfPlaysPlayed))
             log.info('Alerted updated network')
 
     def getCheckpointFile(self, iteration):
@@ -315,6 +369,10 @@ class JanggiCoach():
 
     def getStateDictFile(self, folder, iteration):
         return os.path.join(folder, 'sd_' + str(iteration) + '.pickle')
+
+    @staticmethod
+    def getSharedStateDictFile(folder):
+        return os.path.join(folder, 'sd_shared.pickle')
 
     def saveTrainExamples(self, iteration):
         folder = self.args.checkpoint

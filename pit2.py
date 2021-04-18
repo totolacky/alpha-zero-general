@@ -24,7 +24,7 @@ rp = RandomPlayer(g).play
 gp = GreedyJanggiPlayer(g).play
 hp = HumanJanggiPlayer(g).play
 
-arena = JanggiArena.JanggiArena(hp, gp, g, display=JanggiGame.display)
+arena = JanggiArena.JanggiArena(hp, hp, g, display=JanggiGame.display)
 # arena = JanggiArena.JanggiArena(HumanJanggiPlayer(g).play, HumanJanggiPlayer(g).play, g, display=JanggiGame.display)
 
 print(arena.playGames(2, verbose=True))

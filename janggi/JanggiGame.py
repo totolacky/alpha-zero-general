@@ -208,6 +208,24 @@ class JanggiGame(Game):
         print("     0 1 2 3 4 5 6 7 8")
 
     @staticmethod
+    def display_flat(board):
+        print("   ---------------------")
+        for i in range(10):
+            y = 9-i
+            print(" ", end="")
+            print(y, end=" | ")
+            for j in range(9):
+                x = j
+                print(JanggiGame.square_content[board[x][y]], end="")
+                if (x == 2 or x == 5) and (y >= 7 or y <= 2):
+                    print("|", end="")
+                else:
+                    print(" ", end="")
+            print("|")
+        print("   ---------------------")
+        print("     0 1 2 3 4 5 6 7 8")
+
+    @staticmethod
     def encodeBoard(board):
         encodedBoard = []
 

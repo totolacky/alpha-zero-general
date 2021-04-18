@@ -37,22 +37,33 @@ class Board():
             for j in range(CONFIG_X):
                 self.pieces[i][j] = [0]*CONFIG_Y
 
+        # Mode
+        # 0, 5~: BCPMX
+        # 1: B
+        # 2: BC
+        # 3: BCP
+        # 4: BCPM
+        EC = (mode == 0) or (mode > 1)
+        EP = (mode == 0) or (mode > 2)
+        EM = (mode == 0) or (mode > 3)
+        EX = (mode == 0) or (mode > 4)
+
         # Set up first player's pieces.
         self.pieces[0][4][1] = NK   # K
-        self.pieces[0][0][0] = NC   # C
-        self.pieces[0][8][0] = NC   # C
-        self.pieces[0][1][2] = NP   # P
-        self.pieces[0][7][2] = NP   # P
+        self.pieces[0][0][0] = NC * EC   # C
+        self.pieces[0][8][0] = NC * EC   # C
+        self.pieces[0][1][2] = NP * EP   # P
+        self.pieces[0][7][2] = NP * EP   # P
 
-        self.pieces[0][1][0] += NM * int(c1==1 or c1==2)    # M
-        self.pieces[0][2][0] += NM * int(c1==0 or c1==3)    # M
-        self.pieces[0][6][0] += NM * int(c1==1 or c1==3)    # M
-        self.pieces[0][7][0] += NM * int(c1==0 or c1==2)    # M
+        self.pieces[0][1][0] += NM * int(c1==1 or c1==2) * EM    # M
+        self.pieces[0][2][0] += NM * int(c1==0 or c1==3) * EM    # M
+        self.pieces[0][6][0] += NM * int(c1==1 or c1==3) * EM    # M
+        self.pieces[0][7][0] += NM * int(c1==0 or c1==2) * EM    # M
 
-        self.pieces[0][1][0] += NX * int(c1==0 or c1==3)    # X
-        self.pieces[0][2][0] += NX * int(c1==1 or c1==2)    # X
-        self.pieces[0][6][0] += NX * int(c1==0 or c1==2)    # X
-        self.pieces[0][7][0] += NX * int(c1==1 or c1==3)    # X
+        self.pieces[0][1][0] += NX * int(c1==0 or c1==3) * EX    # X
+        self.pieces[0][2][0] += NX * int(c1==1 or c1==2) * EX    # X
+        self.pieces[0][6][0] += NX * int(c1==0 or c1==2) * EX    # X
+        self.pieces[0][7][0] += NX * int(c1==1 or c1==3) * EX    # X
 
         self.pieces[0][3][0] = NS    # S
         self.pieces[0][5][0] = NS    # S
@@ -64,20 +75,20 @@ class Board():
 
         # Set up opponent's pieces.
         self.pieces[0][4][8] = -NK    # K
-        self.pieces[0][0][9] = -NC    # C
-        self.pieces[0][8][9] = -NC    # C
-        self.pieces[0][1][7] = -NP    # P
-        self.pieces[0][7][7] = -NP    # P
+        self.pieces[0][0][9] = -NC * EC    # C
+        self.pieces[0][8][9] = -NC * EC    # C
+        self.pieces[0][1][7] = -NP * EP    # P
+        self.pieces[0][7][7] = -NP * EP    # P
 
-        self.pieces[0][1][9] += -NM * int(c2==0 or c2==3)    # M
-        self.pieces[0][2][9] += -NM * int(c2==1 or c2==2)    # M
-        self.pieces[0][6][9] += -NM * int(c2==0 or c2==2)    # M
-        self.pieces[0][7][9] += -NM * int(c2==1 or c2==3)    # M
+        self.pieces[0][1][9] += -NM * int(c2==0 or c2==3) * EM    # M
+        self.pieces[0][2][9] += -NM * int(c2==1 or c2==2) * EM    # M
+        self.pieces[0][6][9] += -NM * int(c2==0 or c2==2) * EM    # M
+        self.pieces[0][7][9] += -NM * int(c2==1 or c2==3) * EM    # M
 
-        self.pieces[0][1][9] += -NX * int(c2==1 or c2==2)    # X
-        self.pieces[0][2][9] += -NX * int(c2==0 or c2==3)    # X
-        self.pieces[0][6][9] += -NX * int(c2==1 or c2==3)    # X
-        self.pieces[0][7][9] += -NX * int(c2==0 or c2==2)    # X
+        self.pieces[0][1][9] += -NX * int(c2==1 or c2==2) * EX    # X
+        self.pieces[0][2][9] += -NX * int(c2==0 or c2==3) * EX    # X
+        self.pieces[0][6][9] += -NX * int(c2==1 or c2==3) * EX    # X
+        self.pieces[0][7][9] += -NX * int(c2==0 or c2==2) * EX    # X
 
         self.pieces[0][3][9] = -NS    # S
         self.pieces[0][5][9] = -NS    # S
@@ -755,7 +766,7 @@ class Board():
         ]
 
         # The player that just made a move
-        last_player = PLAYER_HAN if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else PLAYER_CHO;
+        last_player = PLAYER_HAN if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else PLAYER_CHO
 
         # If the game just ended with a bic, end the game
         if self.b_params[N_IS_BIC]:
@@ -787,7 +798,7 @@ class Board():
             # Otherwise, the last player lose
             else:
                 return 1 if last_player == PLAYER_HAN else -1
-        
+
         # For simplicity, the game is over when move_cnt hits 250.
         if self.b_params[N_MOVE_CNT] >= 250:
             return 1 if self.b_params[N_CHO_SCORE] > self.b_params[N_HAN_SCORE] else -1
