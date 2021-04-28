@@ -51,7 +51,7 @@ class JanggiArena():
             valids = self.game.getValidMoves(board)
 
             if valids[action] == 0:
-                log.error(f'Action {action} is not valid!')
+                log.error(f'Action {action} is not valid! Current player is {curPlayer}')
                 log.debug(f'valids = {valids}')
                 assert valids[action] > 0
             board = self.game.getNextState(board, action)

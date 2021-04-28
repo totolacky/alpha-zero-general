@@ -34,7 +34,7 @@ class JanggiGame(Game):
     }
 
     # Required
-    def __init__(self, c1, c2):
+    def __init__(self, c1, c2, mode = 0):
         """
         Charim (initial board state):
             0: SMSM (象馬象馬)
@@ -44,6 +44,7 @@ class JanggiGame(Game):
         """
         self.c1 = c1
         self.c2 = c2
+        self.mode = mode
 
     # Required
     def getInitBoard(self):
@@ -53,7 +54,7 @@ class JanggiGame(Game):
                         that will be the input to your neural network)
         """
         # return initial board (numpy board) with repetition count dictionary
-        b = Board(self.c1, self.c2)
+        b = Board(self.c1, self.c2, mode = self.mode)
         return (b.pieces, b.b_params, b.rep_dict)
 
     # Required
@@ -229,7 +230,7 @@ class JanggiGame(Game):
     def encodeBoard(board):
         encodedBoard = []
 
-        b = Board(0, 0)
+        b = Board(0, 0, True)
         b.pieces = np.copy(board[0])
         b.b_params = np.copy(board[1])
         b.rep_dict = board[2].copy()

@@ -30,13 +30,13 @@ class JanggiCoach():
     in Game and NeuralNet. args are specified in main.py.
     """
 
-    def __init__(self, game, nnet, args):
+    def __init__(self, game, nnet, args, selfPlaysPlayed = 0):
         self.game = game
         self.nnet = nnet
         self.args = args
         self.trainExamplesHistory = []  # history of examples from args.numItersForTrainExamplesHistory latest iterations
         self.skipFirstSelfPlay = False  # can be overriden in loadTrainExamples()
-        self.selfPlaysPlayed = 0
+        self.selfPlaysPlayed = selfPlaysPlayed
 
     @staticmethod
     def executeEpisode(eeArgs):
@@ -106,7 +106,7 @@ class JanggiCoach():
                 cp_name = updatePipe_stateDict.recv()
                 while updatePipe_stateDict.poll():
                     cp_name = updatePipe_stateDict.recv()
-                log.info("cp_name: "+cp_name)
+                log.info("cp_name: "+str(cp_name))
                 with open(JanggiCoach.getSharedStateDictFile(JMC.checkpoint_folder), 'rb') as handle:
                     state_dict = pickle.load(handle)
                 nnet.nnet.load_state_dict(state_dict)

@@ -35,13 +35,13 @@ def post_data():
     return "ok"
 
 @app.route("/getPerf", methods=["GET"])
-def get_data():
+def get_perf():
     global performance
     print("[Data] "+str(num_data)+" [SD] "+str(state_dict)+" [IBS] "+str(initial_board_state)+" [PERF] "+str(performance))
     return pickle.dumps(performance)
 
 @app.route("/postPerf", methods=["POST"])
-def post_data():
+def post_perf():
     global performance, lock
     new_perf_tuple = pickle.loads(request.data)
     with lock:

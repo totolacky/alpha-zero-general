@@ -9,15 +9,16 @@ import pickle
 
 import numpy as np
 from utils import *
-
-import request_base_url from JanggiMainConstants
+from JanggiMainConstants import request_base_url
 
 """
 use this script to play any two agents against each other, or play manually with
 any agent.
 """
 
-g = JanggiGame(0, 0)
+ibs = pickle.loads(requests.get(url = request_base_url+"/getIBS").content)
+
+g = JanggiGame(0, 0, ibs)
 
 rp = []
 gp = []
@@ -26,15 +27,15 @@ rp_rate = []
 gp_rate = []
 
 play_num = 20
-gpu_num = 0
+gpu_num = 1
 
 # checkpoints = [40, 100, 150, 202, 259, 310, 370, 430, 490, 560, 630, 708, 781, 860, 943, 1029, 1118]
 # checkpoints = [17, 52, 55, 70, 78, 96, 107, 138, 162, 173, 180, 188, 211, 220, 234]
-checkpoints = [17, 55, 78, 107, 162, 180, 211, 234]
+checkpoints = []
 
 for i in checkpoints:
     n1 = NNet(g)
-    cp_name = "./temp/sds/sd_"+str(i)+".pickle"
+    cp_name = "./mnt/sds/sd_"+str(i)+".pickle"
     with open(cp_name, 'rb') as handle:
         state_dict = pickle.load(handle)
     n1.nnet.load_state_dict(state_dict)

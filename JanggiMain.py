@@ -56,7 +56,7 @@ def main():
         log.warning('Not loading a checkpoint!')
 
     log.info('Loading the Coach...')
-    c = Coach(g, nnet, args)
+    c = Coach(g, nnet, args, JMC.selfPlaysPlayed)
 
     if args.load_model:
         log.info("Loading 'trainExamples' from file...")
