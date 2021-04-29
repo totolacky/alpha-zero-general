@@ -4,7 +4,7 @@ from janggi.JanggiGame import JanggiGame
 from janggi.JanggiPlayers import *
 from janggi.pytorch.NNet import NNetWrapper as NNet
 import random
-import pickle
+import pickle, requests
 
 
 import numpy as np
