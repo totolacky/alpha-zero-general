@@ -98,6 +98,7 @@ class JanggiCoach():
         """	
         game, updatePipe_stateDict, sharedQ, gpu_num, queues, checkpoint_folder = nnProcArgs
         should_update = False
+        lastTime = 0
 
         if checkpoint_folder == None:
             nnet = nn(game, updatePipe_stateDict, gpu_num)
@@ -112,21 +113,24 @@ class JanggiCoach():
                     cp_name = updatePipe_stateDict.recv()
                 log.info("cp_name: "+str(cp_name))
                 should_update = True
+                lastTime = time.time()
 
             # Update NN if possible
             if (should_update):
-                log.info('ACQUIRING LOCK FOR MOUNTED FOLDER ACCESS')
-                can_access = pickle.loads(requests.get(url = self.args.request_base_url+"/acquireLock").content)
-                if (can_access):
-                    should_update = False
-                    with open(JanggiCoach.getSharedStateDictFile(JMC.checkpoint_folder), 'rb') as handle:
-                        state_dict = pickle.load(handle)
-                    nnet.nnet.load_state_dict(state_dict)
-                    log.info('Updated network.')
-                    updatePipe_stateDict.send(0)
-                    requests.get(url = self.args.request_base_url+"/releaseLock")
-                else:
-                    log.info('FAILED TO ACQUIRE ACCESS')
+                if (time.time() - lastTime > 1):
+                    lastTime = time.time()
+                    log.info('ACQUIRING LOCK FOR MOUNTED FOLDER ACCESS')
+                    can_access = pickle.loads(requests.get(url = JMC.request_base_url+"/acquireLock").content)
+                    if (can_access):
+                        should_update = False
+                        with open(JanggiCoach.getSharedStateDictFile(JMC.checkpoint_folder), 'rb') as handle:
+                            state_dict = pickle.load(handle)
+                        nnet.nnet.load_state_dict(state_dict)
+                        log.info('Updated network.')
+                        updatePipe_stateDict.send(0)
+                        requests.get(url = JMC.request_base_url+"/releaseLock")
+                    else:
+                        log.info('FAILED TO ACQUIRE ACCESS')
 
 
             # Check for evaluation requests
