@@ -83,6 +83,8 @@ class JanggiCoach():
 
             r = game.getGameEnded(board)
 
+            # [(x[0], x[2], r * ((-1) ** (x[1] != curPlayer))) for x in trainExamples]
+
             if r != 0:
                 data = [(x[0], x[2], r * x[1]) for x in trainExamples]
                 if nextSelfplayQ != None:
@@ -95,6 +97,8 @@ class JanggiCoach():
         	
         """	
         game, updatePipe_stateDict, sharedQ, gpu_num, queues, checkpoint_folder = nnProcArgs
+        should_update = False
+
         if checkpoint_folder == None:
             nnet = nn(game, updatePipe_stateDict, gpu_num)
         else:
@@ -107,12 +111,24 @@ class JanggiCoach():
                 while updatePipe_stateDict.poll():
                     cp_name = updatePipe_stateDict.recv()
                 log.info("cp_name: "+str(cp_name))
-                with open(JanggiCoach.getSharedStateDictFile(JMC.checkpoint_folder), 'rb') as handle:
-                    state_dict = pickle.load(handle)
-                nnet.nnet.load_state_dict(state_dict)
-                log.info('Updated network.')
-                updatePipe_stateDict.send(0)
-            
+                should_update = True
+
+            # Update NN if possible
+            if (should_update):
+                log.info('ACQUIRING LOCK FOR MOUNTED FOLDER ACCESS')
+                can_access = pickle.loads(requests.get(url = self.args.request_base_url+"/acquireLock").content)
+                if (can_access):
+                    should_update = False
+                    with open(JanggiCoach.getSharedStateDictFile(JMC.checkpoint_folder), 'rb') as handle:
+                        state_dict = pickle.load(handle)
+                    nnet.nnet.load_state_dict(state_dict)
+                    log.info('Updated network.')
+                    updatePipe_stateDict.send(0)
+                    requests.get(url = self.args.request_base_url+"/releaseLock")
+                else:
+                    log.info('FAILED TO ACQUIRE ACCESS')
+
+
             # Check for evaluation requests
             req = sharedQ.get()	
             if req == None:	
@@ -151,7 +167,7 @@ class JanggiCoach():
         if not self.args.is_training_client:
             self.learn_selfplay_client()
         else:
-            self.learn_training_client()
+            self.learn_training_only_client()
 
     def learn_selfplay_client(self):
         """
@@ -342,7 +358,7 @@ class JanggiCoach():
                     f"Removing the oldest entry in trainExamples. len(trainExamplesHistory) = {len(self.trainExamplesHistory)}")
                 self.trainExamplesHistory.pop(0)
             # backup history to a file
-            # NB! the examples were collected using the model from the previous iteration, so (i-1)  
+            # NB! the examples were collected using the model from the previous iteration, so (i-1)
             self.saveTrainExamples(self.selfPlaysPlayed)
 
             # shuffle examples before training
@@ -363,6 +379,81 @@ class JanggiCoach():
             # Send the new state_dict
             requests.post(url = self.args.request_base_url+"/updateSD", data = pickle.dumps(self.selfPlaysPlayed))
             log.info('Alerted updated network')
+
+    def learn_training_only_client(self):
+        """
+        Process that only trains the network
+        """
+        untrained_cnt = 0
+
+        # Load self-plays and train
+        for i in range(1, self.args.numIters + 1):
+            log.info(f'Starting Iter #{i} ... ({self.selfPlaysPlayed} games played)')
+
+            iterationTrainExamples = deque([], maxlen=self.args.maxlenOfQueue)
+
+            # Train a lot on the first trial to prevent infinite move masking
+            if (i == 1):
+                trainFreq = 100
+            else:
+                trainFreq = self.args.trainFrequency
+
+            while (untrained_cnt < trainFreq):
+                # Load self-plays from server
+                c, d = pickle.loads(requests.get(url = self.args.request_base_url+"/getData").content)
+                log.info(f'{c} self-play data loaded')
+                self.selfPlaysPlayed += c
+                untrained_cnt += c
+                iterationTrainExamples += d
+                if (untrained_cnt < trainFreq):
+                    sleep(60)
+            
+            log.info(f'{untrained_cnt} GAMES LOADED: TRAINING AND SAVING NEW MODEL')
+
+            # Add the server-generated examples to the iterationTrainExamples
+            self.trainExamplesHistory.append(iterationTrainExamples)
+            untrained_cnt = 0
+
+            # Update the trainExamplesHistory
+            if len(self.trainExamplesHistory) > self.args.numItersForTrainExamplesHistory:
+                log.warning(
+                    f"Removing the oldest entry in trainExamples. len(trainExamplesHistory) = {len(self.trainExamplesHistory)}")
+                self.trainExamplesHistory.pop(0)
+
+            # backup history to a file every 10 iterations
+            # NB! the examples were collected using the model from the previous iteration, so (i-1)  
+            if (i % 10 == 0):
+                self.saveTrainExamples(self.selfPlaysPlayed)
+
+            # shuffle examples before training
+            trainExamples = []
+            for e in self.trainExamplesHistory:
+                trainExamples.extend(e)
+            shuffle(trainExamples)
+
+            log.info('TRAINING AND SAVING NEW MODEL')	
+            self.nnet.train(trainExamples)
+            # Save checkpoints every 10 iterations
+            if (i % 10 == 0):
+                self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(self.selfPlaysPlayed))
+            
+            log.info('ACQUIRING LOCK FOR MOUNTED FOLDER ACCESS')
+            can_access = pickle.loads(requests.get(url = self.args.request_base_url+"/acquireLock").content)
+            while (not can_access):
+                sleep(1)
+                can_access = pickle.loads(requests.get(url = self.args.request_base_url+"/acquireLock").content)
+
+            for f in self.args.checkpoint_folders:
+                log.info('SENDING CHECKPOINT TO SERVER VIA MOUNTED FOLDER')
+                with open(JanggiCoach.getSharedStateDictFile(f), 'wb') as handle:
+                    pickle.dump({k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}, handle)
+
+            requests.get(url = self.args.request_base_url+"/releaseLock")
+
+            # Send the new state_dict
+            requests.post(url = self.args.request_base_url+"/updateSD", data = pickle.dumps(self.selfPlaysPlayed))
+            log.info('Alerted updated network')
+                
 
     def getCheckpointFile(self, iteration):
         return 'checkpoint_' + str(iteration) + '.pickle'

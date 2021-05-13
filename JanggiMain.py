@@ -38,6 +38,8 @@ args = dotdict({
 
     'is_training_client' : JMC.is_training_client,
     'request_base_url': JMC.request_base_url,
+
+    'trainFrequency': JMC.trainFrequency,   # Update the network everytime after trainFrequency selfplays are done.
 })
 
 

@@ -62,4 +62,10 @@ class GreedyJanggiPlayer():
             score = self.game.getScore(nextBoard)
             candidates += [(-score, a)]
         candidates.sort()
-        return candidates[0][1]
+
+        optimals = []
+        bestScore = candidates[0][0]
+        for a in candidates:
+            if a[0] == bestScore:
+                optimals.append(a[1])
+        return optimals[np.random.randint(len(optimals))]

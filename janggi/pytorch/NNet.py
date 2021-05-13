@@ -15,7 +15,7 @@ import torch.optim as optim
 from .JanggiNNet import JanggiNNet as jnnet
 
 args = dotdict({
-    'lr': 0.01,
+    'lr': 0.2,
     'dropout': 0.3,
     'epochs': 10,
     'batch_size': 256,

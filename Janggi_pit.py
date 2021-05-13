@@ -31,14 +31,15 @@ gpu_num = 1
 
 # checkpoints = [40, 100, 150, 202, 259, 310, 370, 430, 490, 560, 630, 708, 781, 860, 943, 1029, 1118]
 # checkpoints = [17, 52, 55, 70, 78, 96, 107, 138, 162, 173, 180, 188, 211, 220, 234]
-checkpoints = []
+checkpoints = [1801]
 
 for i in checkpoints:
     n1 = NNet(g)
-    cp_name = "./mnt/sds/sd_"+str(i)+".pickle"
-    with open(cp_name, 'rb') as handle:
-        state_dict = pickle.load(handle)
-    n1.nnet.load_state_dict(state_dict)
+    n1.load_checkpoint("./mnt/sds1/", "checkpoint_"+str(i)+".pickle")
+    # cp_name = "./mnt/sds/sd_"+str(i)+".pickle"
+    # with open(cp_name, 'rb') as handle:
+    #     state_dict = pickle.load(handle)
+    # n1.nnet.load_state_dict(state_dict)
 
     args1 = dotdict({'numMCTSSims': 120, 'cpuct':1.0})
     mcts1 = JanggiMCTS(g, n1, args1)
