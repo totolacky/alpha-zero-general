@@ -101,7 +101,7 @@ class Board():
         # Convert to numpy array
         self.pieces = np.array(self.pieces)
 
-        score = 1 * _piece_score(NK) + 2 * _piece_score(NC) * EC + 2 * _piece_score(NP) * EP + 2 * _piece_score(NM) * EM + 2 * _piece_score(NX) * EX + 2 * _piece_score(NS) + 5 * _piece_score(NB)
+        score = 1 * self._piece_score(NK) + 2 * self._piece_score(NC) * EC + 2 * self._piece_score(NP) * EP + 2 * self._piece_score(NM) * EM + 2 * self._piece_score(NX) * EX + 2 * self._piece_score(NS) + 5 * self._piece_score(NB)
 
         # Set up params: han_pcs/cho_pcs (bitmap indicating the live pieces), move_cnt and curr_player
         han_pcs = 34133    # 10000/10/10/10/10/10/1
