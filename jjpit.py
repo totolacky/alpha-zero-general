@@ -31,7 +31,14 @@ gpu_num = 1
 
 # checkpoints = [40, 100, 150, 202, 259, 310, 370, 430, 490, 560, 630, 708, 781, 860, 943, 1029, 1118]
 # checkpoints = [17, 52, 55, 70, 78, 96, 107, 138, 162, 173, 180, 188, 211, 220, 234]
-checkpoints = [1987]
+ref = 1987
+checkpoints = [1218]
+
+n2 = NNet(g)
+n2.load_checkpoint("./mnt/sds/", "checkpoint_"+str(ref)+".pickle")
+args2 = dotdict({'numMCTSSims': 120, 'cpuct':1.0})
+mcts2 = JanggiMCTS(g, n2, args2)
+p2 = lambda x: np.argmax(mcts2.getActionProb(x, temp=0))
 
 for i in checkpoints:
     print("Testing Checkpoint "+str(i))
@@ -46,29 +53,18 @@ for i in checkpoints:
     mcts1 = JanggiMCTS(g, n1, args1)
     p1 = lambda x: np.argmax(mcts1.getActionProb(x, temp=0))
 
-    p2 = RandomPlayer(g).play
+    #p2 = RandomPlayer(g).play
 
     arena = JanggiArena.JanggiArena(p1, p2, g, display=JanggiGame.display)
     rpres = arena.playGames(play_num, verbose=False)
-    print('CP self-play x'+str(i)+' vs RP: (Win/Lose/Draw) = '+str(rpres))
+    print('CP self-play x'+str(i)+' vs CP self-play '+str(ref)+': (Win/Lose/Draw) = '+str(rpres))
     rp.append(rpres)
     rp_rate.append((rpres[0]+rpres[2]/2)/play_num*100)
 
-    p2 = GreedyJanggiPlayer(g).play
+    requests.post(url = request_base_url+"/postPerf", data = pickle.dumps((i, (rpres[0]+rpres[2]/2)/play_num*100)))
 
-    arena = JanggiArena.JanggiArena(p1, p2, g, display=JanggiGame.display)
-    gpres = arena.playGames(play_num, verbose=False)
-    print('CP self-play x'+str(i)+' vs GP: (Win/Lose/Draw) = '+str(gpres))
-    gp.append(gpres)
-    gp_rate.append((gpres[0]+gpres[2]/2)/play_num*100)
-
-    requests.post(url = request_base_url+"/postPerf", data = pickle.dumps((i, (rpres[0]+rpres[2]/2)/play_num*100, (gpres[0]+gpres[2]/2)/play_num*100)))
-
-print('RP:', rp)
-print('GP:', gp)
-
-print('RP Rate:', rp_rate)
-print('GP Rate:', gp_rate)
+print("RP:"+str(rp))
+print('RP Rate:'+str( rp_rate))
 
 # human_vs_cpu = True
 
