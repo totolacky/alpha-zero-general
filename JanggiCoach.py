@@ -398,7 +398,7 @@ class JanggiCoach():
 
             # Train a lot on the first trial to prevent infinite move masking
             if (i == 1):
-                trainFreq = 100
+                trainFreq = 0 if self.skipFirstSelfPlay else 100
             else:
                 trainFreq = self.args.trainFrequency
 

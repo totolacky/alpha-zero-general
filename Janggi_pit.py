@@ -31,7 +31,7 @@ gpu_num = 1
 
 # checkpoints = [40, 100, 150, 202, 259, 310, 370, 430, 490, 560, 630, 708, 781, 860, 943, 1029, 1118]
 # checkpoints = [17, 52, 55, 70, 78, 96, 107, 138, 162, 173, 180, 188, 211, 220, 234]
-checkpoints = [1987]
+checkpoints = [1539]
 
 for i in checkpoints:
     print("Testing Checkpoint "+str(i))
