@@ -113,12 +113,12 @@ class JanggiCoach():
                     cp_name = updatePipe_stateDict.recv()
                 log.info("cp_name: "+str(cp_name))
                 should_update = True
-                lastTime = time.time()
+                lastTime = time()
 
             # Update NN if possible
             if (should_update):
-                if (time.time() - lastTime > 1):
-                    lastTime = time.time()
+                if (time() - lastTime > 1):
+                    lastTime = time()
                     log.info('ACQUIRING LOCK FOR MOUNTED FOLDER ACCESS')
                     can_access = pickle.loads(requests.get(url = JMC.request_base_url+"/acquireLock").content)
                     if (can_access):
@@ -216,6 +216,15 @@ class JanggiCoach():
         
         # Continuously generate self-plays
         while True:
+            # Check for any network updates
+            new_sd = pickle.loads(requests.get(url = self.args.request_base_url+"/getSD").content)
+            if statedict_name != new_sd:
+                statedict_name = new_sd
+                for q in nn_update_pipes2:
+                    q.send(statedict_name)
+                    q.recv()
+                log.info('Alerted the nn procs to update the network')
+
             # Wait for a selfplay result
             data, finished_id = nextSelfplayQ.get()
             self.selfPlaysPlayed += 1
@@ -227,15 +236,6 @@ class JanggiCoach():
             # Run new selfplay
             ibs = pickle.loads(requests.get(url = self.args.request_base_url+"/getIBS").content)
             selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2, mode = ibs), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ, None)])
-
-            # Check for any network updates
-            new_sd = pickle.loads(requests.get(url = self.args.request_base_url+"/getSD").content)
-            if statedict_name != new_sd:
-                statedict_name = new_sd
-                for q in nn_update_pipes2:
-                    q.send(statedict_name)
-                    q.recv()
-                log.info('Alerted the nn procs to update the network')
 
     def learn_single_selfplay_client(self):
         """
@@ -398,7 +398,7 @@ class JanggiCoach():
 
             # Train a lot on the first trial to prevent infinite move masking
             if (i == 1):
-                trainFreq = 100
+                trainFreq = 0 if self.skipFirstSelfPlay else 100
             else:
                 trainFreq = self.args.trainFrequency
 
