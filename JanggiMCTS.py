@@ -47,19 +47,19 @@ class JanggiMCTS():
         
         counts = [self.Nsa[(s, a)] if (s, a) in self.Nsa else 0 for a in range(self.game.getActionSize())]
 
-        valids = self.game.getValidMoves(board)
-        validCnt = 0
-        visitedCnt = 0
-        visitedCntList = []
-        for i in range(self.game.getActionSize()):
-            if (valids[i]):
-                validCnt += 1
-                visitedCntList.append(counts[i])
-                if (counts[i] != 0):
-                    visitedCnt += 1
+        # valids = self.game.getValidMoves(board)
+        # validCnt = 0
+        # visitedCnt = 0
+        # visitedCntList = []
+        # for i in range(self.game.getActionSize()):
+        #     if (valids[i]):
+        #         validCnt += 1
+        #         visitedCntList.append(counts[i])
+        #         if (counts[i] != 0):
+        #             visitedCnt += 1
 
-        print("\nvalid moves: "+str(validCnt)+"\tvisited moves: "+str(visitedCnt)+"\trate: "+str(visitedCnt/validCnt))
-        print(str(visitedCntList))
+        # print("\nvalid moves: "+str(validCnt)+"\tvisited moves: "+str(visitedCnt)+"\trate: "+str(visitedCnt/validCnt))
+        # print(str(visitedCntList))
 
         if temp == 0:
             bestAs = np.array(np.argwhere(counts == np.max(counts))).flatten()

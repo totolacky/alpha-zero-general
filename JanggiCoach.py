@@ -79,6 +79,24 @@ class JanggiCoach():
             temp = int(episodeStep < args.tempThreshold)
 
             pi = mcts.getActionProb(board, temp=temp)
+            # Add dirichlet noise for the root node
+            if episodeStep == 1:
+                valids = game.getValidMoves(board)
+                size = np.sum(valids)
+                noise_cnt = 0
+
+                noise = np.random.dirichlet(np.array([0.3] * size))
+                # print("noise: "+str(noise))
+                for i in range(np.array(pi).size):
+                    if (valids[i]):
+                        # print("pi: "+str(pi[i])+", noise: "+str(noise[noise_cnt]))
+                        pi[i] += noise[noise_cnt]
+                        noise_cnt += 1
+
+                # print("Divide!")
+                pi /= np.sum(pi)
+                # print("good upto here. sum(pi)="+str(np.sum(pi)))
+
             trainExamples.append([encodedBoard, alternate, pi, None])
 
             alternate = -alternate
