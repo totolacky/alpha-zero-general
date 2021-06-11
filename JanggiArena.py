@@ -3,6 +3,8 @@ import logging
 from tqdm import tqdm
 import torch.multiprocessing as mp	
 from torch.multiprocessing import Pool	
+from janggi.JanggiConstants import *
+from janggi.JanggiLogic import Board
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +57,11 @@ class JanggiArena():
                 log.debug(f'valids = {valids}')
                 assert valids[action] > 0
             board = self.game.getNextState(board, action)
+
+            if verbose:
+                a,x,y = (int(action/(CONFIG_X*CONFIG_Y)), int((action%(CONFIG_X*CONFIG_Y))/CONFIG_Y), action%CONFIG_Y)
+                dx,dy = Board._action_to_dxdy(a)
+                print("[("+str(x)+","+str(y)+"): ("+str(dx)+","+str(dy)+")]", end="\t")
 
             curPlayer *= -1
 

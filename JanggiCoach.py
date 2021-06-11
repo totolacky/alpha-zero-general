@@ -22,6 +22,9 @@ import requests, pickle
 
 import JanggiMainConstants as JMC
 
+from janggi.JanggiConstants import *
+from janggi.JanggiLogic import Board
+
 log = logging.getLogger(__name__)
 
 class JanggiCoach():
@@ -62,6 +65,8 @@ class JanggiCoach():
         episodeStep = 0
         alternate = 1
 
+        # actionList = []
+
         if sharedQ == None:
             nnet = nn(game, state_dict, mctsQIdx)
             mcts = JanggiMCTS(game, state_dict, args)
@@ -79,6 +84,11 @@ class JanggiCoach():
             alternate = -alternate
 
             action = np.random.choice(len(pi), p=pi)
+
+            # a,x,y = (int(action/(CONFIG_X*CONFIG_Y)), int((action%(CONFIG_X*CONFIG_Y))/CONFIG_Y), action%CONFIG_Y)
+            # dx,dy = Board._action_to_dxdy(a)
+            # print("step="+str(episodeStep)+"\taction:\t"+str(action)+"="+str((x, y, x+dx, y+dy))+"\tprob(stay)="+str(pi[5220]))
+            # actionList.append((x, y, x+dx, y+dy))
             board = game.getNextState(board, action)
 
             r = game.getGameEnded(board)
@@ -87,6 +97,7 @@ class JanggiCoach():
 
             if r != 0:
                 data = [(x[0], x[2], r * x[1]) for x in trainExamples]
+                # print("\n"+str(actionList))
                 if nextSelfplayQ != None:
                     nextSelfplayQ.put((data, mctsQIdx))
                 return data
