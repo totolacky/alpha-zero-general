@@ -41,7 +41,7 @@ class JanggiMCTS():
         """
         for i in range(self.args.numMCTSSims):
             encodedBoard = JanggiGame.encodeBoard(board)
-            self.search(board, encodedBoard)
+            self.search(board, encodedBoard, True)
 
         s = self.game.stringRepresentation(board)
         
@@ -74,7 +74,7 @@ class JanggiMCTS():
 
         return probs
 
-    def search(self, board, encodedBoard):
+    def search(self, board, encodedBoard, isRoot):
         """
         This function performs one iteration of MCTS. It is recursively called
         till a leaf node is found. The action chosen at each node is one that
@@ -111,6 +111,21 @@ class JanggiMCTS():
             sum_Ps_s = np.sum(self.Ps[s])
             if sum_Ps_s > 0:
                 self.Ps[s] /= sum_Ps_s  # renormalize
+                # Add noise to root
+                if isRoot:
+                    pi = self.Ps[s]
+                    size = np.sum(valids)
+                    noise = np.random.dirichlet(np.array([0.3] * size))
+                    noise_cnt = 0
+
+                    for i in range(np.array(pi).size):
+                        if (valids[i]):
+                            pi[i] += noise[noise_cnt]
+                            noise_cnt += 1
+
+                    pi /= np.sum(pi)
+                    self.Ps[s] = pi
+
             else:
                 # if all valid moves were masked make all valid moves equally probable
 
@@ -144,7 +159,7 @@ class JanggiMCTS():
         a = best_act
         next_s = self.game.getNextState(board, a)
 
-        v = self.search(next_s, self.game.encodeBoard(next_s))
+        v = self.search(next_s, self.game.encodeBoard(next_s), False)
 
         if (s, a) in self.Qsa:
             self.Qsa[(s, a)] = (self.Nsa[(s, a)] * self.Qsa[(s, a)] + v) / (self.Nsa[(s, a)] + 1)
