@@ -112,7 +112,8 @@ class Board():
         cho_score = score
         captured = False
         is_bic = False
-        self.b_params = np.array([han_pcs, cho_pcs, move_cnt, cur_player, han_score, cho_score, captured, is_bic])
+        turnskip_cnt = 0
+        self.b_params = np.array([han_pcs, cho_pcs, move_cnt, cur_player, han_score, cho_score, captured, is_bic, turnskip_cnt])
 
         # Create the empty repetition set
         self.rep_dict = {}
@@ -544,7 +545,10 @@ class Board():
         if (a == 58):
             self.pieces = np.flip(self.pieces, [1,2])
             self.b_params[N_CAPTURED] = False
+            self.b_params[N_TURNSKIP_CNT] += 1
             return
+        else:
+            self.b_params[N_TURNSKIP_CNT] = 0
 
         ## Otherwise, add the current board to the rep_dict
         canonical_board = self.pieces[0]
@@ -737,38 +741,42 @@ class Board():
             Return 0 otherwise. """
         # Compare these with han(cho)_pcs & ATTACK_MASK
         cannot_win_yangsa = [
-                    # ㅁㅁㅁ: BBBBB/SS/XX/MM/PP/CC/K
-            # 대삼능
-            264,    # 포양상: 00000/00/10/00/01/00/0
-            192,    # 양마상: 00000/00/01/10/00/00/0
-            288,    # 마양상: 00000/00/10/01/00/00/0
+            #         # ㅁㅁㅁ: BBBBB/SS/XX/MM/PP/CC/K
+            # # 대삼능
+            # 264,    # 포양상: 00000/00/10/00/01/00/0
+            # 192,    # 양마상: 00000/00/01/10/00/00/0
+            # 288,    # 마양상: 00000/00/10/01/00/00/0
 
-            # 소삼능
-            2088,   # 포마졸: 00001/00/00/01/01/00/0
-            2184,   # 포상졸: 00001/00/01/00/01/00/0
-            2112,   # 양마졸: 00001/00/00/10/00/00/0
-            2304,   # 양상졸: 00001/00/10/00/00/00/0
-            4104,   # 포양졸: 00010/00/00/00/01/00/0
-            4128,   # 마양졸: 00010/00/00/01/00/00/0
-            4224,   # 상마졸: 00010/00/01/00/00/00/0
-            8192,   # ㅁ삼졸: 00100/00/00/00/00/00/0
+            # # 소삼능
+            # 2088,   # 포마졸: 00001/00/00/01/01/00/0
+            # 2184,   # 포상졸: 00001/00/01/00/01/00/0
+            # 2112,   # 양마졸: 00001/00/00/10/00/00/0
+            # 2304,   # 양상졸: 00001/00/10/00/00/00/0
+            # 4104,   # 포양졸: 00010/00/00/00/01/00/0
+            # 4128,   # 마양졸: 00010/00/00/01/00/00/0
+            # 4224,   # 상마졸: 00010/00/01/00/00/00/0
+            # 8192,   # ㅁ삼졸: 00100/00/00/00/00/00/0
 
-            # 차삼능
-            4106,   # 차이졸: 00010/00/00/00/01/01/0
+            # # 차삼능
+            # 4106,   # 차이졸: 00010/00/00/00/01/01/0
 
-            # 차이능/
-            10,     # ㅁ차포: 00000/00/00/00/01/01/0
-            34,     # ㅁ차마: 00000/00/00/01/00/01/0
-            130,    # ㅁ차상: 00000/00/01/00/00/01/0
-            2050,   # ㅁ차졸: 00001/00/00/00/00/01/0
+            # # 차이능/
+            # 10,     # ㅁ차포: 00000/00/00/00/01/01/0
+            # 34,     # ㅁ차마: 00000/00/00/01/00/01/0
+            # 130,    # ㅁ차상: 00000/00/01/00/00/01/0
+            # 2050,   # ㅁ차졸: 00001/00/00/00/00/01/0
         ]
 
         cannot_win_wesa = [
-            2050,   # ㅁ차졸: 00001/00/00/00/00/01/0
+            # 2050,   # ㅁ차졸: 00001/00/00/00/00/01/0
         ]
 
         # The player that just made a move
         last_player = PLAYER_HAN if self.b_params[N_CUR_PLAYER] == PLAYER_CHO else PLAYER_CHO
+
+        # If turnskip was done 4 times in a row, end the game
+        if self.b_params[N_TURNSKIP_CNT] >= 4:
+            return 1 if self.b_params[N_CHO_SCORE] > self.b_params[N_HAN_SCORE] else -1
 
         # If the game just ended with a bic, end the game
         if self.b_params[N_IS_BIC]:
@@ -802,7 +810,7 @@ class Board():
                 return 1 if last_player == PLAYER_HAN else -1
 
         # For simplicity, the game is over when move_cnt hits 250.
-        if self.b_params[N_MOVE_CNT] >= 250:
+        if self.b_params[N_MOVE_CNT] >= MAX_TURNS:
             return 1 if self.b_params[N_CHO_SCORE] > self.b_params[N_HAN_SCORE] else -1
         
         # Game is over if bic is called when a player has score >= 30.

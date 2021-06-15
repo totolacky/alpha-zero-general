@@ -16,6 +16,7 @@ N_HAN_SCORE = 4
 N_CHO_SCORE = 5
 N_CAPTURED = 6
 N_IS_BIC = 7
+N_TURNSKIP_CNT = 8
 
 # Players
 PLAYER_CHO = 0
@@ -34,4 +35,4 @@ CONFIG_M = 16   # number of board planes per timestamp
 
 # Others
 NULL = 0
-MAX_TURNS = 250
+MAX_TURNS = 100
