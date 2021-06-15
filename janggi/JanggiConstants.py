@@ -34,4 +34,4 @@ CONFIG_M = 16   # number of board planes per timestamp
 
 # Others
 NULL = 0
-MAX_TURNS = 250
+MAX_TURNS = 100

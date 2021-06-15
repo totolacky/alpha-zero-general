@@ -802,7 +802,7 @@ class Board():
                 return 1 if last_player == PLAYER_HAN else -1
 
         # For simplicity, the game is over when move_cnt hits 250.
-        if self.b_params[N_MOVE_CNT] >= 250:
+        if self.b_params[N_MOVE_CNT] >= MAX_TURNS:
             return 1 if self.b_params[N_CHO_SCORE] > self.b_params[N_HAN_SCORE] else -1
         
         # Game is over if bic is called when a player has score >= 30.

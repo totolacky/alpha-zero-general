@@ -16,8 +16,8 @@ use this script to play any two agents against each other, or play manually with
 any agent.
 """
 
-ibs = pickle.loads(requests.get(url = request_base_url+"/getIBS").content)
-
+#ibs = pickle.loads(requests.get(url = request_base_url+"/getIBS").content)
+ibs = 1
 g = JanggiGame(0, 0, ibs)
 
 rp = []
@@ -29,7 +29,7 @@ gp_rate = []
 play_num = 20
 gpu_num = 1
 
-checkpoints = [1539]
+checkpoints = [1130]
 
 for i in checkpoints:
     print("Testing Checkpoint "+str(i))
