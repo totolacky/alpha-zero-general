@@ -38,15 +38,17 @@ class Board():
                 self.pieces[i][j] = [0]*CONFIG_Y
 
         # Mode
-        # 0, 5~: BMXPC
+        # 0: BMXPC
         # 1: B
         # 2: BM
         # 3: BMX
         # 4: BMXP
+        # 5: BMXPC
+        # 6: BC
         EC = (mode == 0) or (mode > 4)
-        EP = (mode == 0) or (mode > 3)
-        EM = (mode == 0) or (mode > 2)
-        EX = (mode == 0) or (mode > 1)
+        EP = (mode == 0) or (mode > 3 and mode < 6)
+        EM = (mode == 0) or (mode > 2 and mode < 6)
+        EX = (mode == 0) or (mode > 1 and mode < 6)
 
         # Set up first player's pieces.
         self.pieces[0][4][1] = NK   # K
