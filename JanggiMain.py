@@ -16,21 +16,22 @@ log = logging.getLogger(__name__)
 coloredlogs.install(level='INFO')  # Change this to DEBUG to see more info.
 
 args = dotdict({
-    'numIters': JMC.numIters,
-    'numEps': JMC.numEps,              # Number of complete self-play games to simulate during a new iteration.
-    'tempThreshold': JMC.tempThreshold,        #
-    'updateThreshold': JMC.updateThreshold,     # During arena playoff, new neural net will be accepted if threshold or more of games are won.
+    # 'numIters': JMC.numIters,
+    # 'numEps': JMC.numEps,              # Number of complete self-play games to simulate during a new iteration.
+    # 'updateThreshold': JMC.updateThreshold,     # During arena playoff, new neural net will be accepted if threshold or more of games are won.
+    # 'arenaCompare': JMC.arenaCompare,         # Number of games to play during arena play to determine if new net will be accepted.
+    'tempThreshold': JMC.tempThreshold,        #    
     'maxlenOfQueue': JMC.maxlenOfQueue,    # Number of game examples to train the neural networks.
+    'maxDataCount': JMC.maxDataCount,
     'numMCTSSims': JMC.numMCTSSims,          # Number of games moves for MCTS to simulate.
-    'arenaCompare': JMC.arenaCompare,         # Number of games to play during arena play to determine if new net will be accepted.
     'cpuct': JMC.cpuct,
 
-    'checkpoint': JMC.checkpoint,
+    # 'checkpoint': JMC.checkpoint,
     'load_model': JMC.load_model,
     'load_folder_file': JMC.load_folder_file,
     'numItersForTrainExamplesHistory': JMC.numItersForTrainExamplesHistory,
     'checkpoint_folder': JMC.checkpoint_folder,
-    'checkpoint_folders': JMC.checkpoint_folders,
+    # 'checkpoint_folders': JMC.checkpoint_folders,
 
     'num_gpu_procs': JMC.num_gpu_procs,
     'num_selfplay_procs': JMC.num_selfplay_procs,
@@ -38,6 +39,7 @@ args = dotdict({
 
     'is_training_client' : JMC.is_training_client,
     'request_base_url': JMC.request_base_url,
+    'scp_base_url': JMC.scp_base_url,
 
     'trainFrequency': JMC.trainFrequency,   # Update the network everytime after trainFrequency selfplays are done.
 })
