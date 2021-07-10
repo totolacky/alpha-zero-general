@@ -24,6 +24,7 @@ import JanggiMainConstants as JMC
 
 from janggi.JanggiConstants import *
 from janggi.JanggiLogic import Board
+from janggi.JanggiPlayers import *
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ class JanggiCoach():
         # actionList = []
 
         if sharedQ == None:
-            nnet = nn(game, state_dict, mctsQIdx)
+            # nnet = nn(game, state_dict, mctsQIdx)
             mcts = JanggiMCTS(game, state_dict, args)
         else:
             mcts = JanggiMCTS(game, sharedQ, args, True, mctsQ, mctsQIdx)
@@ -84,23 +85,57 @@ class JanggiCoach():
             alternate = -alternate
 
             action = np.random.choice(len(pi), p=pi)
-
-            # a,x,y = (int(action/(CONFIG_X*CONFIG_Y)), int((action%(CONFIG_X*CONFIG_Y))/CONFIG_Y), action%CONFIG_Y)
-            # dx,dy = Board._action_to_dxdy(a)
-            # print("step="+str(episodeStep)+"\taction:\t"+str(action)+"="+str((x, y, x+dx, y+dy))+"\tprob(stay)="+str(pi[5220]))
-            # actionList.append((x, y, x+dx, y+dy))
             board = game.getNextState(board, action)
-
             r = game.getGameEnded(board)
-
-            # [(x[0], x[2], r * ((-1) ** (x[1] != curPlayer))) for x in trainExamples]
 
             if r != 0:
                 data = [(x[0], x[2], r * x[1]) for x in trainExamples]
-                # print("\n"+str(actionList))
                 if nextSelfplayQ != None:
-                    nextSelfplayQ.put((data, mctsQIdx))
+                    nextSelfplayQ.put((True, (data, mctsQIdx)))
                 return data
+
+    @staticmethod
+    def playGame(pgArgs):
+        """
+        Executes one episode of a game.
+
+        Returns:
+            winner: player who won the game (1 if player1, -1 if player2)
+        """
+        game, args, is_rp, is_p1, checkpoint, nextSelfPlayQ = pgArgs
+
+        mcts = JanggiMCTS(g, state_dict, args)
+
+        player1 = lambda x: np.argmax(mcts.getActionProb(x, temp=0))
+        player2 = RandomPlayer(game).play if is_rp else GreedyJanggiPlayer(game).play
+
+        if not is_p1:
+            tmp = player1
+            player1 = player2
+            player2 = tmp
+
+        players = [player2, None, player1]
+        curPlayer = 1
+        board = game.getInitBoard()
+        it = 0
+
+        while game.getGameEnded(board) == 0:
+            it += 1
+            action = players[curPlayer + 1](board)
+
+            valids = game.getValidMoves(board)
+
+            if valids[action] == 0:
+                log.error(f'Action {action} is not valid! Current player is {curPlayer}')
+                log.debug(f'valids = {valids}')
+                assert valids[action] > 0
+            board = game.getNextState(board, action)
+
+            curPlayer *= -1
+
+        nextSelfPlayQ.put((False, (checkpoint, is_rp, game.getGameEnded(board) * (1 if is_p1 else -1))))
+
+        return 0
 
     @staticmethod
     def checkpointSCP(from_path, to_path):	
@@ -252,16 +287,26 @@ class JanggiCoach():
                 log.info('Alerted the nn procs to update the network')
 
             # Wait for a selfplay result
-            data, finished_id = nextSelfplayQ.get()
-            self.selfPlaysPlayed += 1
-            log.info(str(self.selfPlaysPlayed)+' selfplay games played. Data length = '+str(len(data)))
-            # for d, p, v in data:
-            #     Game.display_flat(d[0] + 2 * d[1] + 3 * d[2] + 4 * d[3] + 5 * d[4] + 6 * d[5] + 7 * d[6] - d[7] - 2 * d[8] - 3 * d[9] - 4 * d[10] - 5 * d[11] - 6 * d[12] - 7 * d[13])
-            requests.post(url = self.args.request_base_url+"/postData", data = pickle.dumps(data))
+            is_selfplay, q_data = nextSelfplayQ.get()
+            if is_selfplay:
+                data, finished_id = q_data
+                self.selfPlaysPlayed += 1
+                log.info(str(self.selfPlaysPlayed)+' selfplay games played. Data length = '+str(len(data)))
+                requests.post(url = self.args.request_base_url+"/postData", data = pickle.dumps(data))
+            else:
+                checkpoint, is_rp, did_win = q_data
+                log.info("Evaluated ("+str(checkpoint)+", "+str(is_rp)+", "+str(did_win)+")")
+                requests.post(url = self.args.request_base_url+"/uploadEvalRes", data = pickle.dumps((checkpoint, is_rp, did_win)))
 
             # Run new selfplay
             ibs = pickle.loads(requests.get(url = self.args.request_base_url+"/getIBS").content)
-            selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2, mode = ibs), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ, None)])
+            next_game = pickle.loads(requests.get(url = self.args.request_base_url+"/getNextGame").content)
+            if next_game == None:
+                selfplayPool.apply_async(JanggiCoach.executeEpisode, [(Game(self.game.c1, self.game.c2, mode = ibs), self.args, sharedQ, queues[finished_id], finished_id, nextSelfplayQ, None)])
+            else:
+                checkpoint, is_rp, is_p1 = next_game
+                assert False
+
 
     def learn_training_only_client(self):
         """
