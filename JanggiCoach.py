@@ -278,8 +278,9 @@ class JanggiCoach():
             if statedict_name != new_sd:
                 statedict_name = new_sd
 
-                sharedStateDictFile = JanggiCoach.getSharedStateDictFile(self.args.checkpoint_folder)
-                JanggiCoach.checkpointSCP(self.args.scp_base_url + ":" + sharedStateDictFile, sharedStateDictFile)
+                sharedStateDictFile = JanggiCoach.getSharedStateDictFile(self.args.remote_checkpoint_folder)
+                if (self.args.scp_base_url != None):
+                    JanggiCoach.checkpointSCP(self.args.scp_base_url + ":" + sharedStateDictFile, sharedStateDictFile)
 
                 for q in nn_update_pipes2:
                     q.send(statedict_name)
@@ -371,9 +372,8 @@ class JanggiCoach():
 
             log.info('TRAINING AND SAVING NEW MODEL')	
             self.nnet.train(trainExamples)
-            # Save checkpoints every 10 iterations
-            if (i % 10 == 0):
-                self.nnet.save_checkpoint(folder=self.args.checkpoint_folder, filename=self.getCheckpointFile(self.selfPlaysPlayed))
+            # Save checkpoints every iteration
+            self.nnet.save_checkpoint(folder=self.args.checkpoint_folder, filename=self.getCheckpointFile(self.selfPlaysPlayed))
             
             log.info('ACQUIRING LOCK FOR MOUNTED FOLDER ACCESS')
             can_access = pickle.loads(requests.get(url = self.args.request_base_url+"/acquireLock").content)
@@ -386,6 +386,9 @@ class JanggiCoach():
                 pickle.dump({k: v.cpu() for k, v in self.nnet.nnet.state_dict().items()}, handle)
 
             requests.get(url = self.args.request_base_url+"/releaseLock")
+
+            # Send evaluation request
+            requests.post(url = self.args.request_base_url+"/pushEval", data = pickle.dumps((False, self.selfPlaysPlayed)))
 
             # Send the new state_dict
             requests.post(url = self.args.request_base_url+"/updateSD", data = pickle.dumps(self.selfPlaysPlayed))
